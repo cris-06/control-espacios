@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\DatosEjemplo;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,6 +42,11 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
+            'demo' => $request->user() ? [
+                'rol' => DatosEjemplo::rolActual($request),
+                'roles' => DatosEjemplo::ROLES,
+                'notificaciones' => DatosEjemplo::porAtender(DatosEjemplo::rolActual($request)),
+            ] : null,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

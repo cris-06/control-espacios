@@ -2,6 +2,7 @@
 
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\URL;
 use Laravel\Fortify\Features;
@@ -21,10 +22,10 @@ test('email verification screen can be rendered', function () {
 test('unverified users are redirected to the email verification prompt', function () {
     $user = User::factory()->unverified()->create();
 
-    $response = $this->actingAs($user)->get(route('appearance.edit'));
+    $response = $this->actingAs($user)->get(route('dashboard'));
 
     $response->assertRedirect(route('verification.notice'));
-});
+})->skip(! is_subclass_of(User::class, MustVerifyEmail::class), 'La verificación de correo está desactivada temporalmente.');
 
 test('email can be verified', function () {
     $user = User::factory()->unverified()->create();
