@@ -149,8 +149,9 @@ class EspacioController extends Controller
                 'mimes:jpg,jpeg,png,webp',
                 'max:3072',
             ],
-            // El formulario de edición debe enviar este campo, incluso como [].
-            'requerimientos' => ['present', 'array'],
+            // Un arreglo vacío se omite al enviar multipart/form-data.
+            // En ese caso se sincroniza como [] para retirar las asignaciones.
+            'requerimientos' => ['sometimes', 'array'],
             'requerimientos.*.id' => [
                 'required',
                 'integer',
@@ -188,7 +189,7 @@ class EspacioController extends Controller
 
                 // Sincroniza cantidades: actualiza, agrega o retira relaciones.
                 $relaciones = [];
-                foreach ($datos['requerimientos'] as $item) {
+                foreach ($datos['requerimientos'] ?? [] as $item) {
                     $relaciones[$item['id']] = [
                         'cantidad_disponible' => $item['cantidad_disponible'],
                     ];
