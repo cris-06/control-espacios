@@ -2,10 +2,11 @@
 
 namespace App\Providers;
 
-use App\Actions\Fortify\CreateNewUser;
 use App\Actions\Fortify\ResetUserPassword;
+use App\Models\User;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
@@ -40,7 +41,22 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureActions(): void
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
-        Fortify::createUsersUsing(CreateNewUser::class);
+
+        // Autentica contra la tabla `usuarios`: busca por correo, exige estatus
+        // 'activo' y valida la contraseña. Si el usuario tiene 2FA, Fortify
+        // continúa con el reto de dos factores después de esto.
+        Fortify::authenticateUsing(function (Request $request): ?User {
+            $user = User::query()
+                ->where('correo', $request->input(Fortify::username()))
+                ->where('estatus', 'activo')
+                ->first();
+
+            if ($user && Hash::check((string) $request->input('password'), $user->password)) {
+                return $user;
+            }
+
+            return null;
+        });
     }
 
     /**
@@ -65,10 +81,6 @@ class FortifyServiceProvider extends ServiceProvider
 
         Fortify::verifyEmailView(fn (Request $request) => Inertia::render('auth/VerifyEmail', [
             'status' => $request->session()->get('status'),
-        ]));
-
-        Fortify::registerView(fn () => Inertia::render('auth/Register', [
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
         ]));
 
         Fortify::twoFactorChallengeView(fn () => Inertia::render('auth/TwoFactorChallenge'));

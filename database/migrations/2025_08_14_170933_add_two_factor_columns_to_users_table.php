@@ -4,6 +4,11 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * Migración heredada del starter kit. La tabla `users` ya no se crea en
+ * instalaciones nuevas; las columnas de 2FA viven ahora en `usuarios`
+ * (ver 2026_11_08_000001_add_auth_columns_to_usuarios_table).
+ */
 return new class extends Migration
 {
     /**
@@ -11,6 +16,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (! Schema::hasTable('users') || Schema::hasColumn('users', 'two_factor_secret')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->text('two_factor_secret')->after('password')->nullable();
             $table->text('two_factor_recovery_codes')->after('two_factor_secret')->nullable();
@@ -23,6 +32,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'two_factor_secret')) {
+            return;
+        }
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropColumn([
                 'two_factor_secret',

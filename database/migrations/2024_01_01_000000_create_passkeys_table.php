@@ -8,12 +8,15 @@ return new class extends Migration
 {
     /**
      * Run the migrations.
+     *
+     * user_id es INT con signo porque usuarios.id es INT con signo
+     * (foreignId crearía BIGINT UNSIGNED y la llave foránea fallaría).
      */
     public function up(): void
     {
         Schema::create('passkeys', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
+            $table->integer('user_id');
             $table->string('name');
             $table->string('credential_id')->unique();
             $table->json('credential');
@@ -21,6 +24,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index('user_id');
+            $table->foreign('user_id')->references('id')->on('usuarios')->cascadeOnDelete();
         });
     }
 
