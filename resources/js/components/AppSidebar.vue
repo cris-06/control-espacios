@@ -10,11 +10,9 @@ import { useMounted } from '@vueuse/core';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import NavMain from '@/components/NavMain.vue';
-import SelectorRolDemo from '@/components/SelectorRolDemo.vue';
 import {
     Sidebar,
     SidebarContent,
-    SidebarFooter,
     SidebarHeader,
     useSidebar,
 } from '@/components/ui/sidebar';
@@ -25,9 +23,9 @@ import { index as solicitudes } from '@/routes/solicitudes';
 import type { NavItem } from '@/types';
 
 const page = usePage();
-const esDocente = computed(() => page.props.demo?.rol === 'docente');
+const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
 
-// Ocultar Reportes solo ordena el menú: quien protege la ruta es ReporteController.
+// Ocultar Reportes solo ordena el menú: la ruta la protege el middleware 'rol' en el backend.
 const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'Panel',
@@ -45,9 +43,9 @@ const mainNavItems = computed<NavItem[]>(() => [
         icon: ClipboardList,
         conteo: page.props.demo?.notificaciones.length,
     },
-    ...(esDocente.value
-        ? []
-        : [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]),
+    ...(page.props.auth.permisos.verReportes
+        ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
+        : []),
 ]);
 
 const { open, isMobile } = useSidebar();
@@ -99,9 +97,6 @@ onBeforeUnmount(() => clearTimeout(temporizador));
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 
-        <SidebarFooter class="border-t border-sidebar-border">
-            <SelectorRolDemo />
-        </SidebarFooter>
     </Sidebar>
 
     <div
@@ -121,12 +116,6 @@ onBeforeUnmount(() => clearTimeout(temporizador));
     >
         <div class="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pt-3">
             <NavMain :items="mainNavItems" :compacto="!extendido" />
-        </div>
-        <div
-            v-show="extendido"
-            class="w-64 shrink-0 border-t border-sidebar-border"
-        >
-            <SelectorRolDemo />
         </div>
     </aside>
     <slot />

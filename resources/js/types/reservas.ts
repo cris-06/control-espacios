@@ -1,4 +1,4 @@
-export type RolDemo = 'superadmin' | 'admin' | 'coordinador' | 'docente';
+export type NombreRol = 'superadmin' | 'admin' | 'coordinador' | 'docente';
 
 export type Opcion = {
     id: number;

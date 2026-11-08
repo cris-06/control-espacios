@@ -1,3 +1,5 @@
+import type { NombreRol } from '@/types/reservas';
+
 export type User = {
     id: number;
     nombre: string;
@@ -22,6 +24,8 @@ export type User = {
 
 export type Auth = {
     user: User;
+    rol: { nombre: NombreRol; nivel: number } | null;
+    permisos: { administrar: boolean; verReportes: boolean };
 };
 
 export type Passkey = {

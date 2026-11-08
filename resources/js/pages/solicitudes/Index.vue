@@ -28,7 +28,7 @@ const props = defineProps<{
 }>();
 
 const page = usePage();
-const esDocente = computed(() => page.props.demo?.rol === 'docente');
+const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
 
 const conteo = computed(() =>
     props.solicitudes.length === 1

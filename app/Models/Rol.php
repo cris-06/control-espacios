@@ -13,11 +13,35 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class Rol extends Model
 {
+    public const SUPERADMIN = 'superadmin';
+
+    public const ADMIN = 'admin';
+
+    public const COORDINADOR = 'coordinador';
+
+    public const DOCENTE = 'docente';
+
+    /** Niveles de roles.nivel. La autorización compara contra estos umbrales. */
+    public const NIVEL_SUPERADMIN = 100;
+
+    public const NIVEL_ADMIN = 90;
+
+    public const NIVEL_COORDINADOR = 70;
+
+    public const NIVEL_DOCENTE = 50;
+
     protected $table = 'roles';
 
     public $timestamps = false;
 
     protected $fillable = ['nombre', 'nivel', 'descripcion'];
+
+    protected function casts(): array
+    {
+        return [
+            'nivel' => 'integer',
+        ];
+    }
 
     /**
      * @return HasMany<User, $this>

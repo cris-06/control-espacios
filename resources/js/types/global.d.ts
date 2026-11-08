@@ -1,6 +1,6 @@
 import type { Directive } from 'vue';
 import type { Auth } from '@/types/auth';
-import type { Reserva, RolDemo } from '@/types/reservas';
+import type { Reserva } from '@/types/reservas';
 
 // Extend ImportMeta interface for Vite...
 declare module 'vite/client' {
@@ -20,9 +20,8 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: Auth;
+            // TEMPORAL: notificaciones de ejemplo hasta la Fase 5.
             demo: {
-                rol: RolDemo;
-                roles: RolDemo[];
                 notificaciones: Reserva[];
             } | null;
             sidebarOpen: boolean;
