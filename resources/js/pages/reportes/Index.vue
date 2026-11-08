@@ -212,6 +212,7 @@ const imprimir = () => window.print();
                 <TablaReservas
                     :reservas="resultados"
                     mostrar-docente
+                    enlazar
                     vacio="No hay reservaciones con estos filtros."
                 />
             </TarjetaSeccion>

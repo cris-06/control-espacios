@@ -25,8 +25,9 @@ defineOptions({
 });
 
 const props = defineProps<{
-    filtros: { estado_id: number | null };
+    filtros: { estado_id: number | null; licenciatura_id: number | null };
     opcionesEstados: Opcion[];
+    opcionesLicenciaturas: Opcion[];
     solicitudes: ReservaFila[];
     puedeCrear: boolean;
 }>();
@@ -44,11 +45,17 @@ const estadoId = ref(
     props.filtros.estado_id ? String(props.filtros.estado_id) : null,
 );
 
-watch(estadoId, (valor) => {
-    router.get(index.url(), sinVacios({ estado_id: valor }), {
-        preserveState: true,
-        preserveScroll: true,
-    });
+const licenciaturaId = ref(
+    props.filtros.licenciatura_id ? String(props.filtros.licenciatura_id) : null,
+);
+
+// Solo se ofrecen las licenciaturas propias; el backend responde 403 a cualquier otra.
+watch([estadoId, licenciaturaId], ([estado, licenciatura]) => {
+    router.get(
+        index.url(),
+        sinVacios({ estado_id: estado, licenciatura_id: licenciatura }),
+        { preserveState: true, preserveScroll: true },
+    );
 });
 </script>
 
@@ -74,6 +81,19 @@ watch(estadoId, (valor) => {
 
         <TarjetaSeccion titulo="Listado" :descripcion="conteo">
             <template #acciones>
+                <div
+                    v-if="opcionesLicenciaturas.length > 1"
+                    class="w-full sm:w-64"
+                >
+                    <CampoFormulario id="licenciatura" etiqueta="Licenciatura">
+                        <CampoSelect
+                            id="licenciatura"
+                            v-model="licenciaturaId"
+                            :opciones="opcionesLicenciaturas"
+                            vacio="Todas mis licenciaturas"
+                        />
+                    </CampoFormulario>
+                </div>
                 <div class="w-full sm:w-64">
                     <CampoFormulario id="estado" etiqueta="Estado">
                         <CampoSelect
@@ -89,7 +109,7 @@ watch(estadoId, (valor) => {
                 :reservas="solicitudes"
                 :mostrar-docente="!esDocente"
                 enlazar
-                vacio="No hay solicitudes con este estado."
+                vacio="No hay solicitudes con estos filtros."
             />
         </TarjetaSeccion>
     </PaginaBase>

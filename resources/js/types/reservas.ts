@@ -6,7 +6,11 @@ export type Opcion = {
 };
 
 export type Reserva = {
+    // En filas por detalle (reportes, disponibilidad), id es el del detalle y reserva_id el de la reserva.
     id: number;
+    reserva_id?: number | null;
+    // false cuando el usuario no puede ver la reserva (solo se muestra «Reservado»).
+    visible?: boolean;
     folio: string;
     actividad: string;
     docente: string;

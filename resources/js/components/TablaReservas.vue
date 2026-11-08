@@ -31,8 +31,8 @@ const columnas = computed(() => [
     <TablaDatos :columnas="columnas" :filas="reservas" :vacio="vacio">
         <template #folio="{ fila }">
             <Link
-                v-if="enlazar"
-                :href="show(fila.id)"
+                v-if="enlazar && fila.visible !== false"
+                :href="show(fila.reserva_id ?? fila.id)"
                 class="font-medium whitespace-nowrap text-rojo tabular-nums underline-offset-4 hover:underline"
                 >{{ fila.folio }}</Link
             >

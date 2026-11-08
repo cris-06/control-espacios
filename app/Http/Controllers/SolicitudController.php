@@ -3,16 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\EstadoReserva;
+use App\Models\Licenciatura;
 use App\Models\Reserva;
-use App\Models\ReservaDetalle;
 use App\Models\User;
+use App\Support\FilasReserva;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Listado de reservas reales. Cada rol solo ve lo que le corresponde
+ * Listado de reservas. Cada rol solo ve lo que le corresponde
  * (Reserva::scopeVisiblesPara, mismo criterio que ReservaPolicy::view).
+ * Filtrar por una licenciatura ajena responde 403.
  */
 class SolicitudController extends Controller
 {
@@ -21,56 +23,32 @@ class SolicitudController extends Controller
         /** @var User $user */
         $user = $request->user();
         $estadoId = $request->integer('estado_id') ?: null;
+        $licenciaturaId = $request->integer('licenciatura_id') ?: null;
+
+        abort_if(
+            $licenciaturaId !== null && ! $user->puedeConsultarLicenciatura($licenciaturaId),
+            403,
+            'No tienes acceso a las reservas de esa licenciatura.',
+        );
 
         $reservas = Reserva::query()
             ->visiblesPara($user)
-            ->when($estadoId, fn ($query, int $id) => $query->where('estado_id', $estadoId))
-            ->with([
-                'creador:id,nombre,apellido_paterno,apellido_materno',
-                'licenciatura:id,nombre',
-                'actividad:id,nombre',
-                'detalles.espacio:id,nombre',
-            ])
+            ->when($estadoId, fn ($query, int $id) => $query->where('estado_id', $id))
+            ->when($licenciaturaId, fn ($query, int $id) => $query->where('licenciatura_id', $id))
+            ->with([...FilasReserva::RELACIONES_RESERVA, 'detalles.espacio:id,nombre'])
             ->orderByDesc('fecha_actualizacion')
             ->orderByDesc('id')
             ->limit(200)
             ->get();
 
         return Inertia::render('solicitudes/Index', [
-            'filtros' => ['estado_id' => $estadoId],
+            'filtros' => ['estado_id' => $estadoId, 'licenciatura_id' => $licenciaturaId],
             'opcionesEstados' => EstadoReserva::opciones(),
-            'solicitudes' => $reservas->map(fn (Reserva $reserva): array => $this->fila($reserva)),
+            'opcionesLicenciaturas' => $user->licenciaturasConsultables()
+                ->map(fn (Licenciatura $l): array => ['id' => $l->id, 'nombre' => $l->nombre])
+                ->values(),
+            'solicitudes' => $reservas->map(fn (Reserva $reserva): array => FilasReserva::deReserva($reserva)),
             'puedeCrear' => $user->can('create', Reserva::class),
         ]);
-    }
-
-    /**
-     * Una fila por reserva; fecha, horario y espacio son los del primer detalle.
-     *
-     * @return array<string, mixed>
-     */
-    private function fila(Reserva $reserva): array
-    {
-        /** @var ReservaDetalle|null $primero */
-        $primero = $reserva->detalles->first();
-        $extra = $reserva->detalles->count() - 1;
-
-        return [
-            'id' => $reserva->id,
-            'folio' => $reserva->folio ?? Reserva::folioPara($reserva->id),
-            'actividad' => $reserva->nombre_actividad ?: $reserva->actividad->nombre,
-            'usuario_creador_id' => $reserva->usuario_creador_id,
-            'docente' => $reserva->creador->name,
-            'licenciatura_id' => $reserva->licenciatura_id,
-            'licenciatura' => $reserva->licenciatura->nombre,
-            'espacio_id' => $primero?->espacio_id,
-            'espacio' => $primero ? $primero->espacio->nombre.($extra > 0 ? " (+{$extra})" : '') : null,
-            'fecha' => $primero?->fecha->toDateString(),
-            'hora_inicio' => $primero ? ReservaDetalle::hhmm($primero->hora_inicio) : null,
-            'hora_fin' => $primero ? ReservaDetalle::hhmm($primero->hora_fin) : null,
-            'cantidad_alumnos' => $primero?->cantidad_alumnos,
-            'estado_id' => $reserva->estado_id,
-            'estado' => EstadoReserva::etiqueta($reserva->estado_id),
-        ];
     }
 }

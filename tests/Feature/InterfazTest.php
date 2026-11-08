@@ -47,30 +47,13 @@ test('the side menu starts expanded until the user collapses it', function () {
         ->assertInertia(fn (Assert $pagina) => $pagina->where('sidebarOpen', false));
 });
 
-// La visibilidad del listado de solicitudes (datos reales) se prueba en Reservas/ReservaHttpTest.
+// La visibilidad por rol y licenciatura (solicitudes, reportes, disponibilidad y panel)
+// se prueba con datos reales en Reservas/ReservaHttpTest y Reservas/RestriccionesLicenciaturaTest.
 
 test('teachers cannot open reports', function () {
     verComo('docente');
 
     $this->get(route('reportes.index'))->assertForbidden();
-});
-
-test('coordinators cannot report on another degree program', function () {
-    verComo('coordinador');
-
-    $this->get(route('reportes.index', ['licenciatura_id' => 3]))->assertInertia(fn (Assert $pagina) => $pagina
-        ->where('errores.licenciatura_id', 'La licenciatura seleccionada no está disponible.')
-        ->where('resultados', []));
-});
-
-test('reports filter by degree program and add up by status', function () {
-    verComo('admin');
-
-    $this->get(route('reportes.index', ['licenciatura_id' => 4]))->assertInertia(fn (Assert $pagina) => $pagina
-        ->has('resultados', 2)
-        ->has('totalesEstado', 2)
-        ->where('totalesEstado.0.nombre', 'Autorizada')
-        ->where('totalesEstado.1.nombre', 'Denegada'));
 });
 
 test('reports reject a period that ends before it starts', function () {
@@ -81,28 +64,6 @@ test('reports reject a period that ends before it starts', function () {
         ->assertInertia(fn (Assert $pagina) => $pagina
             ->where('errores.fecha_fin', 'La fecha de fin no puede ser anterior a la de inicio.')
             ->where('resultados', []));
-});
-
-test('availability tells apart occupied, pending, free and out of service spaces', function () {
-    verComo('admin');
-
-    $this->get(route('disponibilidad.index', ['hora_inicio' => '11:30', 'hora_fin' => '12:30']))
-        ->assertInertia(fn (Assert $pagina) => $pagina
-            ->where('espacios.0.situacion', 'ocupado')
-            ->where('espacios.1.situacion', 'libre')
-            ->where('espacios.2.situacion', 'pendiente')
-            ->where('espacios.3.situacion', 'ocupado')
-            ->where('espacios.4.situacion', 'fuera_de_servicio')
-            ->where('espacios.5.situacion', 'fuera_de_servicio'));
-});
-
-test('a reservation ending exactly when the search starts is not a conflict', function () {
-    verComo('admin');
-
-    $this->get(route('disponibilidad.index', ['espacio_id' => 2, 'hora_inicio' => '10:00', 'hora_fin' => '11:00']))
-        ->assertInertia(fn (Assert $pagina) => $pagina
-            ->has('espacios', 1)
-            ->where('espacios.0.situacion', 'libre'));
 });
 
 test('availability rejects a schedule that ends before it starts', function () {
