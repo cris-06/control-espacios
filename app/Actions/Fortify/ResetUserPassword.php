@@ -22,8 +22,10 @@ class ResetUserPassword implements ResetsUserPasswords
             'password' => $this->passwordRules(),
         ])->validate();
 
+        // Quien restablece por correo eligió su propia contraseña: ya no es temporal.
         $user->forceFill([
             'password' => $input['password'],
+            'debe_cambiar_password' => false,
         ])->save();
     }
 }

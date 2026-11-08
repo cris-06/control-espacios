@@ -4,7 +4,9 @@ import {
     CalendarDays,
     ChartColumn,
     ClipboardList,
+    GraduationCap,
     LayoutGrid,
+    Users,
 } from '@lucide/vue';
 import { useMounted } from '@vueuse/core';
 import { computed, onBeforeUnmount, ref } from 'vue';
@@ -17,6 +19,8 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as licenciaturas } from '@/routes/admin/licenciaturas';
+import { index as usuarios } from '@/routes/admin/usuarios';
 import { index as disponibilidad } from '@/routes/disponibilidad';
 import { index as reportes } from '@/routes/reportes';
 import { index as solicitudes } from '@/routes/solicitudes';
@@ -45,6 +49,16 @@ const mainNavItems = computed<NavItem[]>(() => [
     },
     ...(page.props.auth.permisos.verReportes
         ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
+        : []),
+    ...(page.props.auth.permisos.administrar
+        ? [
+              { title: 'Usuarios', href: usuarios(), icon: Users },
+              {
+                  title: 'Licenciaturas',
+                  href: licenciaturas(),
+                  icon: GraduationCap,
+              },
+          ]
         : []),
 ]);
 

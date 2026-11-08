@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\LicenciaturaController;
+use App\Http\Controllers\Admin\UsuarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
 use App\Http\Controllers\ReporteController;
@@ -20,9 +22,18 @@ Route::middleware(['auth', 'verified', 'rol:coordinador,admin,superadmin'])->gro
     Route::get('reportes', [ReporteController::class, 'index'])->name('reportes.index');
 });
 
-// Solo administración. Aquí irán las rutas de gestión de usuarios y catálogos (Fase 3).
+// Solo administración. Cada acción además pasa por UserPolicy / Gate 'administrar'.
 Route::middleware(['auth', 'verified', 'rol:admin,superadmin'])->prefix('admin')->name('admin.')->group(function () {
-    //
+    Route::resource('usuarios', UsuarioController::class)
+        ->except(['show', 'destroy'])
+        ->parameters(['usuarios' => 'usuario']);
+    Route::patch('usuarios/{usuario}/estatus', [UsuarioController::class, 'cambiarEstatus'])->name('usuarios.estatus');
+    Route::post('usuarios/{usuario}/password', [UsuarioController::class, 'restablecerPassword'])->name('usuarios.password');
+
+    Route::get('licenciaturas', [LicenciaturaController::class, 'index'])->name('licenciaturas.index');
+    Route::post('licenciaturas', [LicenciaturaController::class, 'store'])->name('licenciaturas.store');
+    Route::put('licenciaturas/{licenciatura}', [LicenciaturaController::class, 'update'])->name('licenciaturas.update');
+    Route::patch('licenciaturas/{licenciatura}/estatus', [LicenciaturaController::class, 'cambiarEstatus'])->name('licenciaturas.estatus');
 });
 
 require __DIR__.'/settings.php';
