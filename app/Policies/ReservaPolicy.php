@@ -36,13 +36,17 @@ class ReservaPolicy
 
     public function view(User $user, Reserva $reserva): bool
     {
-        if ($user->esAdministrador() || $this->esCreador($user, $reserva)) {
+        if ($this->esCreador($user, $reserva)) {
             return true;
         }
 
-        // El coordinador no ve borradores ajenos: aún no se los han enviado.
-        return $user->coordinaLicenciatura($reserva->licenciatura_id)
-            && ! $reserva->enEstado(EstadoReserva::BORRADOR);
+        // Nadie ve borradores ajenos: aún no se los han enviado (mismo criterio que
+        // Reserva::scopeVisiblesPara).
+        if ($reserva->enEstado(EstadoReserva::BORRADOR)) {
+            return false;
+        }
+
+        return $user->esAdministrador() || $user->coordinaLicenciatura($reserva->licenciatura_id);
     }
 
     /**

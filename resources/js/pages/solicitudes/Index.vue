@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
 import TablaReservas from '@/components/TablaReservas.vue';
 import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
+import { Button } from '@/components/ui/button';
 import { sinVacios } from '@/lib/reservas';
+import { create } from '@/routes/reservas';
 import { index } from '@/routes/solicitudes';
-import type { Opcion, Reserva } from '@/types';
+import type { Opcion, ReservaFila } from '@/types';
 
 defineOptions({
     layout: {
@@ -24,7 +27,8 @@ defineOptions({
 const props = defineProps<{
     filtros: { estado_id: number | null };
     opcionesEstados: Opcion[];
-    solicitudes: Reserva[];
+    solicitudes: ReservaFila[];
+    puedeCrear: boolean;
 }>();
 
 const page = usePage();
@@ -59,6 +63,15 @@ watch(estadoId, (valor) => {
                 : 'Solicitudes visibles para tu rol.'
         "
     >
+        <template v-if="puedeCrear" #acciones>
+            <Button as-child>
+                <Link :href="create()">
+                    <Plus class="size-4" />
+                    Nueva reserva
+                </Link>
+            </Button>
+        </template>
+
         <TarjetaSeccion titulo="Listado" :descripcion="conteo">
             <template #acciones>
                 <div class="w-full sm:w-64">
@@ -75,6 +88,7 @@ watch(estadoId, (valor) => {
             <TablaReservas
                 :reservas="solicitudes"
                 :mostrar-docente="!esDocente"
+                enlazar
                 vacio="No hay solicitudes con este estado."
             />
         </TarjetaSeccion>

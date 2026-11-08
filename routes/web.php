@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\UsuarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
 use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\ReservaController;
+use App\Http\Controllers\ReservaTransicionController;
 use App\Http\Controllers\SolicitudController;
 use Illuminate\Support\Facades\Route;
 
@@ -15,6 +17,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('disponibilidad', [DisponibilidadController::class, 'index'])->name('disponibilidad.index');
     Route::get('solicitudes', [SolicitudController::class, 'index'])->name('solicitudes.index');
+
+    // Reservas: cada acción la autoriza ReservaPolicy; los estados, ReservaWorkflowService.
+    Route::resource('reservas', ReservaController::class)->only(['create', 'store', 'show', 'edit', 'update']);
+    Route::post('reservas/{reserva}/transicion', ReservaTransicionController::class)
+        ->middleware('throttle:30,1')
+        ->name('reservas.transicion');
 });
 
 // Coordinación y administración.

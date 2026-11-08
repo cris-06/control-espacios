@@ -58,22 +58,7 @@ test('the side menu starts expanded until the user collapses it', function () {
         ->assertInertia(fn (Assert $pagina) => $pagina->where('sidebarOpen', false));
 });
 
-test('teachers only see their own requests', function () {
-    verComo('docente');
-
-    $this->get(route('solicitudes.index'))->assertInertia(fn (Assert $pagina) => $pagina
-        ->where('solicitudes', fn ($solicitudes) => $solicitudes->isNotEmpty()
-            && $solicitudes->every(fn (array $solicitud) => $solicitud['usuario_creador_id'] === 3)));
-});
-
-test('coordinators do not see drafts or other degree programs', function () {
-    verComo('coordinador');
-
-    $this->get(route('solicitudes.index'))->assertInertia(fn (Assert $pagina) => $pagina
-        ->where('solicitudes', fn ($solicitudes) => $solicitudes->isNotEmpty()
-            && $solicitudes->every(fn (array $solicitud) => in_array($solicitud['licenciatura_id'], [1, 2], true)
-                && $solicitud['estado_id'] !== DatosEjemplo::BORRADOR)));
-});
+// La visibilidad del listado de solicitudes (datos reales) se prueba en Reservas/ReservaHttpTest.
 
 test('teachers cannot open reports', function () {
     verComo('docente');
