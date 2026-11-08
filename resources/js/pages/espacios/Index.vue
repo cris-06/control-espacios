@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Ellipsis, Eye, RotateCcw, Search } from '@lucide/vue';
 
@@ -74,9 +74,16 @@ const columnas = [
 // Espacio seleccionado para cambiar su estado
 const espacioEstadoId = ref<number | null>(null);
 
+
 type EstadoEspacio = 'disponible' | 'mantenimiento' | 'inactivo';
 
-const nuevoEstado = ref<EstadoEspacio>('disponible');
+// Se habilitará cuando estén integrados los permisos
+const habilitarEscritura = false;
+
+const formEstado = useForm({
+    estatus: 'disponible' as EstadoEspacio,
+});
+
 
 // Obtener el espacio seleccionado
 const espacioCambiarEstado = computed(() =>
@@ -86,20 +93,50 @@ const espacioCambiarEstado = computed(() =>
 );
 
 // Abrir el apartado para cambiar el estado
+
 const abrirCambioEstado = (espacio: Espacio) => {
     espacioEstadoId.value = espacio.id;
-    nuevoEstado.value = espacio.estatus;
+    formEstado.estatus = espacio.estatus;
+    formEstado.clearErrors();
+
+    // Cerrar el formulario de edición si está abierto
+    espacioEditarId.value = null;
 };
+
+// Guardar el nuevo estado del espacio
+const guardarEstado = () => {
+    if (
+        !habilitarEscritura ||
+        formEstado.processing ||
+        espacioEstadoId.value === null
+    ) {
+        return;
+    }
+
+    formEstado.patch(
+        `/espacios/${espacioEstadoId.value}/estatus`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                espacioEstadoId.value = null;
+            },
+        }
+    );
+};
+
+
+
 
 const espaciosFiltrados = computed(() => {
     const texto = busqueda.value.trim().toLowerCase();
 
     return props.espacios.filter((espacio) => {
         // Buscar únicamente por nombre
-        const coincideNombre =
-            espacio.nombre.toLowerCase().includes(texto);
+        const coincideNombre = espacio.nombre
+            .toLowerCase()
+            .includes(texto);
 
-        // Filtrar por estado
+        // Filtrar únicamente por estatus
         const coincideEstado =
             filtroEstatus.value === 'todos' ||
             espacio.estatus === filtroEstatus.value;
@@ -107,6 +144,8 @@ const espaciosFiltrados = computed(() => {
         return coincideNombre && coincideEstado;
     });
 });
+
+
 
 // Mostrar contador únicamente cuando existan filtros activos
 const hayFiltrosActivos = computed(() => {
@@ -304,6 +343,7 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
 <EditarEspacio
     v-if="espacioEditar"
     :espacio="espacioEditar"
+    :requerimientos="requerimientos"
     @cerrar="espacioEditarId = null"
 />
 
@@ -323,7 +363,7 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
         </label>
 
         <select
-            v-model="nuevoEstado"
+            v-model="formEstado.estatus"
             class="w-full rounded-md border bg-background p-2 text-sm"
         >
             <option value="disponible">
@@ -338,6 +378,12 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                 Inactivo
             </option>
         </select>
+        <p
+    v-if="formEstado.errors.estatus"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formEstado.errors.estatus }}
+</p>
     </div>
 
     <p class="text-xs text-muted-foreground">
@@ -352,9 +398,19 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
             Cancelar
         </Button>
 
-        <Button disabled>
-            Guardar estado
-        </Button>
+        
+<Button
+    type="button"
+    :disabled="!habilitarEscritura || formEstado.processing"
+    @click="guardarEstado"
+>
+    {{
+        formEstado.processing
+            ? 'Guardando...'
+            : 'Guardar estado'
+    }}
+</Button>
+
     </div>
 </div>
 
@@ -457,3 +513,5 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
 
             </div>
         </TarjetaSeccion>
+        </PaginaBase>
+        </template>
