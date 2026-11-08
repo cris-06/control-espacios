@@ -61,14 +61,20 @@ const guardarRequerimiento = () => {
 const busqueda = ref('');
 const filtroEstatus = ref('todos');
 
-// Edición de requerimientos
+
+ // Edición de requerimientos
 const requerimientoEditarId = ref<number | null>(null);
-const nombreEdicion = ref('');
+
+const formEdicion = useForm({
+    nombre: '',
+});
+
 
 // Cambio de estatus
 const requerimientoEstadoId = ref<number | null>(null);
-const nuevoEstatus = ref<'activo' | 'eliminado'>('activo');
-
+const formEstado = useForm({
+    estatus: 'activo' as 'activo' | 'eliminado',
+});
 // Columnas de la tabla
 const columnas = [
     { clave: 'nombre', titulo: 'Requerimiento' },
@@ -113,13 +119,36 @@ const requerimientoEditar = computed(() =>
 );
 
 // Abrir formulario de edición
+
 const abrirEdicion = (requerimiento: Requerimiento) => {
     requerimientoEditarId.value = requerimiento.id;
-    nombreEdicion.value = requerimiento.nombre;
+
+    formEdicion.nombre = requerimiento.nombre;
+    formEdicion.clearErrors();
 
     requerimientoEstadoId.value = null;
 };
 
+// Actualizar requerimiento en Laravel
+const guardarEdicion = () => {
+    if (
+        !habilitarEscritura ||
+        formEdicion.processing ||
+        requerimientoEditarId.value === null
+    ) {
+        return;
+    }
+
+    formEdicion.put(
+        `/requerimientos/${requerimientoEditarId.value}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                requerimientoEditarId.value = null;
+            },
+        }
+    );
+};
 // Requerimiento seleccionado para cambiar estatus
 const requerimientoCambiarEstado = computed(() =>
     props.requerimientos.find(
@@ -128,12 +157,36 @@ const requerimientoCambiarEstado = computed(() =>
 );
 
 // Abrir selector de estatus
+
 const abrirCambioEstado = (requerimiento: Requerimiento) => {
     requerimientoEstadoId.value = requerimiento.id;
-    nuevoEstatus.value = requerimiento.estatus;
+    formEstado.estatus = requerimiento.estatus;
+    formEstado.clearErrors();
 
     requerimientoEditarId.value = null;
 };
+
+// Guardar el cambio de estatus en Laravel
+const guardarEstado = () => {
+    if (
+        !habilitarEscritura ||
+        formEstado.processing ||
+        requerimientoEstadoId.value === null
+    ) {
+        return;
+    }
+
+    formEstado.patch(
+        `/requerimientos/${requerimientoEstadoId.value}/estatus`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                requerimientoEstadoId.value = null;
+            },
+        }
+    );
+};
+
 </script>
 
 <template>
@@ -363,9 +416,16 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                         </label>
 
                         <Input
-                            v-model="nombreEdicion"
-                            maxlength="100"
-                        />
+    v-model="formEdicion.nombre"
+    maxlength="100"
+/>
+
+<p
+    v-if="formEdicion.errors.nombre"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formEdicion.errors.nombre }}
+</p>
                     </div>
 
                     <p class="text-xs text-muted-foreground">
@@ -380,9 +440,17 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                             Cancelar
                         </Button>
 
-                        <Button disabled>
-                            Guardar cambios
-                        </Button>
+                        <Button
+    type="button"
+    :disabled="!habilitarEscritura || formEdicion.processing"
+    @click="guardarEdicion"
+>
+    {{
+        formEdicion.processing
+            ? 'Guardando...'
+            : 'Guardar cambios'
+    }}
+</Button>
                     </div>
                 </div>
 
@@ -402,7 +470,7 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                         </label>
 
                         <select
-                            v-model="nuevoEstatus"
+                            v-model="formEstado.estatus"
                             class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                         >
                             <option value="activo">
@@ -413,6 +481,12 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                                 Eliminado
                             </option>
                         </select>
+                        <p
+    v-if="formEstado.errors.estatus"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formEstado.errors.estatus }}
+</p>
                     </div>
 
                     <p class="text-xs text-muted-foreground">
@@ -427,9 +501,19 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                             Cancelar
                         </Button>
 
-                        <Button disabled>
-                            Guardar estatus
-                        </Button>
+                        
+<Button
+    type="button"
+    :disabled="!habilitarEscritura || formEstado.processing"
+    @click="guardarEstado"
+>
+    {{
+        formEstado.processing
+            ? 'Guardando...'
+            : 'Guardar estatus'
+    }}
+</Button>
+
                     </div>
                 </div>
             </div>
