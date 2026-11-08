@@ -52,4 +52,10 @@ class Espacio extends Model
             'espacio_id'
         );
     }
+
+    // Comprobar si un espacio puede reservarse
+    public function puedeReservarse(): bool
+    {
+        return $this->estatus === 'disponible';
+    }
 }
