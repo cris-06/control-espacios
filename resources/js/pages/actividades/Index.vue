@@ -1,6 +1,6 @@
 
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import {
     Ellipsis,
@@ -35,7 +35,27 @@ const props = defineProps<{
 }>();
 
 // Formulario de registro
-const nombreNuevo = ref('');
+
+const habilitarEscritura = false;
+
+// Formulario para registrar actividades
+const formNuevo = useForm({
+    nombre: '',
+});
+
+// Registrar actividad en Laravel
+const guardarActividad = () => {
+    if (!habilitarEscritura || formNuevo.processing) {
+        return;
+    }
+
+    formNuevo.post('/actividades', {
+        preserveScroll: true,
+        onSuccess: () => {
+            formNuevo.reset();
+        },
+    });
+};
 
 // Búsquedas y filtros
 const busqueda = ref('');
@@ -43,11 +63,18 @@ const filtroEstatus = ref('todos');
 
 // Formulario de edición
 const actividadEditarId = ref<number | null>(null);
-const nombreEdicion = ref('');
-
+const formEdicion = useForm({
+    nombre: '',
+});
 // Cambio de estatus
+
+ // Cambio de estatus
 const actividadEstadoId = ref<number | null>(null);
-const nuevoEstatus = ref<Actividad['estatus']>('activa');
+
+const formEstado = useForm({
+    estatus: 'activa' as Actividad['estatus'],
+});
+
 
 const columnas = [
     { clave: 'nombre', titulo: 'Actividad' },
@@ -87,11 +114,37 @@ const actividadEditar = computed(() =>
     ) ?? null
 );
 
+
 const abrirEdicion = (actividad: Actividad) => {
     actividadEditarId.value = actividad.id;
-    nombreEdicion.value = actividad.nombre;
+
+    formEdicion.nombre = actividad.nombre;
+    formEdicion.clearErrors();
+
     actividadEstadoId.value = null;
 };
+
+// Actualizar actividad en Laravel
+const guardarEdicion = () => {
+    if (
+        !habilitarEscritura ||
+        formEdicion.processing ||
+        actividadEditarId.value === null
+    ) {
+        return;
+    }
+
+    formEdicion.put(
+        `/actividades/${actividadEditarId.value}`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                actividadEditarId.value = null;
+            },
+        }
+    );
+};
+
 
 const actividadCambiarEstado = computed(() =>
     props.actividades.find(
@@ -99,11 +152,36 @@ const actividadCambiarEstado = computed(() =>
     ) ?? null
 );
 
+
 const abrirCambioEstado = (actividad: Actividad) => {
     actividadEstadoId.value = actividad.id;
-    nuevoEstatus.value = actividad.estatus;
+    formEstado.estatus = actividad.estatus;
+    formEstado.clearErrors();
+
     actividadEditarId.value = null;
 };
+
+// Guardar el cambio de estatus en Laravel
+const guardarEstado = () => {
+    if (
+        !habilitarEscritura ||
+        formEstado.processing ||
+        actividadEstadoId.value === null
+    ) {
+        return;
+    }
+
+    formEstado.patch(
+        `/actividades/${actividadEstadoId.value}/estatus`,
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                actividadEstadoId.value = null;
+            },
+        }
+    );
+};
+
 </script>
 
 <template>
@@ -117,7 +195,7 @@ const abrirCambioEstado = (actividad: Actividad) => {
             <div class="space-y-5 p-4">
 
                 <!-- AGREGAR ACTIVIDAD -->
-                <form class="space-y-3" @submit.prevent>
+                <form class="space-y-3" @submit.prevent="guardarActividad">
                     <h3 class="text-sm font-semibold">
                         Agregar actividad
                     </h3>
@@ -133,16 +211,30 @@ const abrirCambioEstado = (actividad: Actividad) => {
                         <div class="flex flex-col gap-2 sm:flex-row">
                             <Input
                                 id="nueva-actividad"
-                                v-model="nombreNuevo"
+                                v-model="formNuevo.nombre"
                                 maxlength="150"
                                 placeholder="Ej. Conferencia, taller, clase..."
                                 required
                             />
+                            <p
+    v-if="formNuevo.errors.nombre"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formNuevo.errors.nombre }}
+</p>
 
-                            <Button type="submit" disabled>
-                                <Plus class="mr-1 size-4" />
-                                Agregar
-                            </Button>
+
+<Button
+    type="submit"
+    :disabled="!habilitarEscritura || formNuevo.processing"
+>
+    {{
+        formNuevo.processing
+            ? 'Guardando...'
+            : 'Agregar'
+    }}
+</Button>
+
                         </div>
                     </div>
 
@@ -294,9 +386,16 @@ const abrirCambioEstado = (actividad: Actividad) => {
                     </label>
 
                     <Input
-                        v-model="nombreEdicion"
-                        maxlength="150"
-                    />
+    v-model="formEdicion.nombre"
+    maxlength="150"
+/>
+
+<p
+    v-if="formEdicion.errors.nombre"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formEdicion.errors.nombre }}
+</p>
 
                     <p class="text-xs text-muted-foreground">
                         Los cambios todavía no se guardan.
@@ -310,9 +409,19 @@ const abrirCambioEstado = (actividad: Actividad) => {
                             Cancelar
                         </Button>
 
-                        <Button disabled>
-                            Guardar cambios
-                        </Button>
+                        
+<Button
+    type="button"
+    :disabled="!habilitarEscritura || formEdicion.processing"
+    @click="guardarEdicion"
+>
+    {{
+        formEdicion.processing
+            ? 'Guardando...'
+            : 'Guardar cambios'
+    }}
+</Button>
+
                     </div>
                 </div>
 
@@ -331,12 +440,18 @@ const abrirCambioEstado = (actividad: Actividad) => {
                     </label>
 
                     <select
-                        v-model="nuevoEstatus"
+                        v-model="formEstado.estatus"
                         class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
                         <option value="activa">Activa</option>
                         <option value="eliminada">Eliminada</option>
                     </select>
+                    <p
+    v-if="formEstado.errors.estatus"
+    class="mt-1 text-sm text-red-600"
+>
+    {{ formEstado.errors.estatus }}
+</p>
 
                     <p class="text-xs text-muted-foreground">
                         Los cambios todavía no se guardan.
@@ -350,9 +465,19 @@ const abrirCambioEstado = (actividad: Actividad) => {
                             Cancelar
                         </Button>
 
-                        <Button disabled>
-                            Guardar estatus
-                        </Button>
+                        
+<Button
+    type="button"
+    :disabled="!habilitarEscritura || formEstado.processing"
+    @click="guardarEstado"
+>
+    {{
+        formEstado.processing
+            ? 'Guardando...'
+            : 'Guardar estatus'
+    }}
+</Button>
+
                     </div>
                 </div>
 
