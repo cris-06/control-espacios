@@ -1,7 +1,7 @@
 import type { Directive } from 'vue';
 import type { PasswordTemporalFlash } from '@/types/admin';
 import type { Auth } from '@/types/auth';
-import type { Reserva } from '@/types/reservas';
+import type { Notificacion } from '@/types/reservas';
 import type { FlashToast } from '@/types/ui';
 
 // Extend ImportMeta interface for Vite...
@@ -22,10 +22,11 @@ declare module '@inertiajs/core' {
         sharedPageProps: {
             name: string;
             auth: Auth;
-            // TEMPORAL: notificaciones de ejemplo hasta la Fase 5.
-            demo: {
-                notificaciones: Reserva[];
+            notificaciones: {
+                noLeidas: number;
+                recientes: Notificacion[];
             } | null;
+            porAtender: number;
             sidebarOpen: boolean;
             [key: string]: unknown;
         };

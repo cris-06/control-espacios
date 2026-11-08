@@ -48,35 +48,75 @@ class ReservaService
     }
 
     /**
+     * Guarda los cambios. Si quien edita es el coordinador (no el creador), se registra
+     * 'editada_coordinador' en el historial con el resumen de lo que cambió.
+     *
      * @param  array<string, mixed>  $datos
      * @param  list<DatosDetalle>  $detalles
      */
-    public function actualizar(Reserva $reserva, array $datos, array $detalles): Reserva
+    public function actualizar(Reserva $reserva, User $editor, array $datos, array $detalles): Reserva
     {
-        return DB::transaction(function () use ($reserva, $datos, $detalles): Reserva {
+        return DB::transaction(function () use ($reserva, $editor, $datos, $detalles): Reserva {
             $licenciaturaAnterior = $reserva->licenciatura_id;
 
             $reserva->fill($this->limpiar($datos));
+            $camposCambiados = array_keys($reserva->getDirty());
 
             if ($reserva->licenciatura_id !== $licenciaturaAnterior) {
                 $this->workflow->asignarCoordinador($reserva);
             }
 
             $reserva->save();
-            $this->sincronizarDetalles($reserva, $detalles);
+            $detallesCambiaron = $this->sincronizarDetalles($reserva, $detalles);
+
+            $esCoordinadorAjeno = $reserva->usuario_creador_id !== $editor->id
+                && $editor->coordinaLicenciatura($licenciaturaAnterior);
+
+            if ($esCoordinadorAjeno && ($camposCambiados !== [] || $detallesCambiaron)) {
+                $reserva->historial()->create([
+                    'usuario_id' => $editor->id,
+                    'accion' => HistorialReserva::EDITADA_COORDINADOR,
+                    'comentario' => $this->resumenCambios($camposCambiados, $detallesCambiaron),
+                ]);
+            }
 
             return $reserva;
         });
     }
 
     /**
+     * @param  list<string>  $campos
+     */
+    private function resumenCambios(array $campos, bool $detallesCambiaron): string
+    {
+        $etiquetas = [
+            'licenciatura_id' => 'licenciatura', 'actividad_id' => 'tipo de actividad',
+            'nombre_actividad' => 'nombre de la actividad', 'objetivo' => 'objetivo',
+            'tipo_formato' => 'tipo de formato', 'cuatrimestre_id' => 'cuatrimestre',
+            'asignatura_id' => 'asignatura', 'costo_alumno' => 'costo por alumno',
+            'promocion_redes' => 'promoción en redes', 'limite_min_usuarios' => 'mínimo de participantes',
+            'limite_max_usuarios' => 'máximo de participantes', 'fecha_entrega_formato' => 'fecha de entrega',
+        ];
+
+        $partes = array_values(array_filter(array_map(fn (string $campo) => $etiquetas[$campo] ?? null, $campos)));
+
+        if ($detallesCambiaron) {
+            $partes[] = 'espacios y horarios';
+        }
+
+        return 'Cambió: '.implode(', ', $partes).'.';
+    }
+
+    /**
      * Actualiza los detalles con id, crea los nuevos y elimina los que ya no vienen.
      *
      * @param  list<DatosDetalle>  $detalles
+     * @return bool si hubo algún cambio en los detalles
      */
-    private function sincronizarDetalles(Reserva $reserva, array $detalles): void
+    private function sincronizarDetalles(Reserva $reserva, array $detalles): bool
     {
         $conservados = [];
+        $cambio = false;
 
         foreach ($detalles as $datos) {
             $id = $datos['id'] ?? null;
@@ -85,21 +125,27 @@ class ReservaService
             $datos['hora_inicio'] = $this->hora($datos['hora_inicio']);
             $datos['hora_fin'] = $this->hora($datos['hora_fin']);
 
-            $detalle = $id !== null
-                ? ReservaDetalle::query()->where('reserva_id', $reserva->id)->findOrFail($id)
-                : new ReservaDetalle(['estado_detalle' => ReservaDetalle::PENDIENTE]);
+            if ($id !== null) {
+                $detalle = ReservaDetalle::query()->where('reserva_id', $reserva->id)->findOrFail($id);
+            } else {
+                $detalle = new ReservaDetalle;
+                $detalle->estado_detalle = ReservaDetalle::PENDIENTE;
+            }
 
             $detalle->fill($datos);
             $detalle->reserva_id = $reserva->id;
+            $cambio = $cambio || ! $detalle->exists || $detalle->isDirty();
             $detalle->save();
 
             $conservados[] = $detalle->id;
         }
 
-        ReservaDetalle::query()
+        $eliminados = ReservaDetalle::query()
             ->where('reserva_id', $reserva->id)
             ->whereNotIn('id', $conservados)
             ->delete();
+
+        return $cambio || $eliminados > 0;
     }
 
     /**

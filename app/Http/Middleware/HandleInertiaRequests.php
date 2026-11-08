@@ -2,7 +2,10 @@
 
 namespace App\Http\Middleware;
 
-use App\Support\DatosEjemplo;
+use App\Http\Controllers\NotificacionController;
+use App\Models\Notificacion;
+use App\Models\Reserva;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -50,10 +53,21 @@ class HandleInertiaRequests extends Middleware
                     'verReportes' => (bool) $user?->can('ver-reportes'),
                 ],
             ],
-            // TEMPORAL: notificaciones de ejemplo hasta la Fase 5 (tabla notificaciones).
-            'demo' => $user ? [
-                'notificaciones' => DatosEjemplo::porAtender(DatosEjemplo::rolActual($request)),
+            // Tabla `notificaciones`: contador de no leídas y las más recientes para el menú.
+            'notificaciones' => $user instanceof User ? fn (): array => [
+                'noLeidas' => Notificacion::query()->where('usuario_id', $user->id)->noLeidas()->count(),
+                'recientes' => Notificacion::query()
+                    ->where('usuario_id', $user->id)
+                    ->orderByDesc('fecha')
+                    ->orderByDesc('id')
+                    ->limit(8)
+                    ->get()
+                    ->map(fn (Notificacion $n): array => NotificacionController::fila($n)),
             ] : null,
+            // Reservas que esperan una acción de este usuario (insignia de Solicitudes).
+            'porAtender' => $user instanceof User
+                ? fn (): int => Reserva::query()->porAtender($user)->count()
+                : 0,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
         ];
     }

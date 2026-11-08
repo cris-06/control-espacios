@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { Pencil, TriangleAlert } from '@lucide/vue';
+import {
+    Ban,
+    CheckCheck,
+    CircleCheck,
+    CircleX,
+    Clock,
+    FilePlus,
+    Pencil,
+    Send,
+    TriangleAlert,
+} from '@lucide/vue';
+import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 import EstadoBadge from '@/components/EstadoBadge.vue';
 import InputError from '@/components/InputError.vue';
@@ -16,7 +27,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { formatearFecha } from '@/lib/reservas';
+import { formatearFecha, formatearFechaHora } from '@/lib/reservas';
 import { edit, transicion } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type { AccionFlujo, ReservaVista } from '@/types';
@@ -47,16 +58,25 @@ const erroresFlujo = computed(() => {
         .map(([, mensaje]) => mensaje);
 });
 
-const etiquetasHistorial: Record<string, string> = {
-    creada: 'Creada',
-    enviada_coordinador: 'Enviada a coordinación',
-    correccion_solicitada: 'Corrección solicitada',
-    aprobada_coordinador: 'Aprobada por coordinación',
-    enviada_admin: 'Enviada a administración',
-    autorizada: 'Autorizada',
-    denegada: 'Denegada',
-    cancelada: 'Cancelada',
+type Paso = { etiqueta: string; icono: Component; color: string };
+
+const gris = 'border-border bg-muted text-muted-foreground';
+const ambar = 'border-amber-200 bg-amber-50 text-amber-700';
+
+// Cada valor del ENUM historial_reservas.accion.
+const pasos: Record<string, Paso> = {
+    creada: { etiqueta: 'Creada', icono: FilePlus, color: gris },
+    enviada_coordinador: { etiqueta: 'Enviada a coordinación', icono: Send, color: ambar },
+    editada_coordinador: { etiqueta: 'Editada por coordinación', icono: Pencil, color: 'border-sky-200 bg-sky-50 text-sky-700' },
+    correccion_solicitada: { etiqueta: 'Corrección solicitada', icono: TriangleAlert, color: 'border-orange-200 bg-orange-50 text-orange-700' },
+    aprobada_coordinador: { etiqueta: 'Aprobada por coordinación', icono: CheckCheck, color: ambar },
+    enviada_admin: { etiqueta: 'Enviada a administración', icono: Send, color: ambar },
+    autorizada: { etiqueta: 'Autorizada', icono: CircleCheck, color: 'border-green-200 bg-green-50 text-green-700' },
+    denegada: { etiqueta: 'Denegada', icono: CircleX, color: 'border-red-200 bg-red-50 text-red-700' },
+    cancelada: { etiqueta: 'Cancelada', icono: Ban, color: gris },
 };
+
+const pasoGenerico: Paso = { etiqueta: '', icono: Clock, color: gris };
 
 const estiloDetalle: Record<string, string> = {
     pendiente: 'text-amber-700',
@@ -64,11 +84,6 @@ const estiloDetalle: Record<string, string> = {
     denegada: 'text-red-700',
     cancelada: 'text-muted-foreground',
 };
-
-const formatoFechaHora = new Intl.DateTimeFormat('es-MX', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-});
 
 const seleccionada = ref<AccionFlujo | null>(null);
 const form = useForm({ accion: '', observacion: '' });
@@ -271,30 +286,57 @@ const varianteBoton = (accion: AccionFlujo) =>
             </ul>
         </TarjetaSeccion>
 
-        <TarjetaSeccion titulo="Historial">
-            <ol class="divide-y divide-border">
+        <TarjetaSeccion
+            titulo="Línea de tiempo"
+            :descripcion="`${reserva.historial.length} movimiento(s)`"
+        >
+            <p
+                v-if="reserva.historial.length === 0"
+                class="px-4 py-8 text-center text-sm text-muted-foreground"
+            >
+                Sin movimientos registrados.
+            </p>
+            <ol v-else class="relative p-4 md:p-6">
                 <li
-                    v-for="registro in reserva.historial"
+                    v-for="(registro, i) in reserva.historial"
                     :key="registro.id"
-                    class="p-4 text-sm"
+                    class="relative flex gap-4 pb-6 last:pb-0"
                 >
-                    <div class="flex flex-wrap justify-between gap-2">
-                        <span class="font-medium">
-                            {{ etiquetasHistorial[registro.accion] ?? registro.accion }}
-                        </span>
-                        <span class="text-muted-foreground">
-                            {{ registro.usuario }}
-                            <template v-if="registro.fecha">
-                                · {{ formatoFechaHora.format(new Date(registro.fecha)) }}
-                            </template>
-                        </span>
-                    </div>
-                    <p
-                        v-if="registro.comentario"
-                        class="mt-1 whitespace-pre-line text-muted-foreground"
+                    <!-- Línea que une los puntos -->
+                    <span
+                        v-if="i < reserva.historial.length - 1"
+                        class="absolute top-8 bottom-0 left-4 w-px -translate-x-1/2 bg-border"
+                        aria-hidden="true"
+                    />
+                    <span
+                        class="relative z-10 flex size-8 shrink-0 items-center justify-center rounded-full border"
+                        :class="(pasos[registro.accion] ?? pasoGenerico).color"
                     >
-                        {{ registro.comentario }}
-                    </p>
+                        <component
+                            :is="(pasos[registro.accion] ?? pasoGenerico).icono"
+                            class="size-4"
+                        />
+                    </span>
+                    <div class="min-w-0 flex-1 pt-1 text-sm">
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                            <span class="font-medium">
+                                {{ (pasos[registro.accion] ?? pasoGenerico).etiqueta || registro.accion }}
+                            </span>
+                            <time
+                                v-if="registro.fecha"
+                                :datetime="registro.fecha"
+                                class="text-xs text-muted-foreground"
+                                >{{ formatearFechaHora(registro.fecha) }}</time
+                            >
+                        </div>
+                        <p class="text-muted-foreground">{{ registro.usuario }}</p>
+                        <p
+                            v-if="registro.comentario"
+                            class="mt-1 rounded-md bg-muted px-3 py-2 whitespace-pre-line"
+                        >
+                            {{ registro.comentario }}
+                        </p>
+                    </div>
                 </li>
             </ol>
         </TarjetaSeccion>

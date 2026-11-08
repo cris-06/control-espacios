@@ -137,3 +137,15 @@ export type ReservaVista = Omit<ReservaFormulario, 'detalles'> & {
     detalles: ReservaDetalleVista[];
     historial: RegistroHistorial[];
 };
+
+// --- Notificaciones (Fase 5) ---
+
+export type Notificacion = {
+    id: number;
+    titulo: string;
+    mensaje: string;
+    tipo: 'info' | 'success' | 'warning' | 'error' | string;
+    leida: boolean;
+    reserva_id: number | null;
+    fecha: string | null;
+};

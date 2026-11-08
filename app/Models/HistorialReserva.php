@@ -35,6 +35,9 @@ class HistorialReserva extends Model
 
     public const CANCELADA = 'cancelada';
 
+    /** Agregada al ENUM por 2026_11_08_000003 (el coordinador editó la reserva de un docente). */
+    public const EDITADA_COORDINADOR = 'editada_coordinador';
+
     const CREATED_AT = 'fecha';
 
     const UPDATED_AT = null;

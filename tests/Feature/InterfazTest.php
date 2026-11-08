@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\User;
-use App\Support\DatosEjemplo;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function verComo(string $rol): void
@@ -36,17 +35,7 @@ test('every role sees its own dashboard', function (string $rol, string $indicad
     ['docente', 'Borradores'],
 ]);
 
-test('notifications list what each role has to act on', function (string $rol, array $estados) {
-    verComo($rol);
-
-    $this->get(route('dashboard'))->assertInertia(fn (Assert $pagina) => $pagina
-        ->where('demo.notificaciones', fn ($notificaciones) => $notificaciones->isNotEmpty()
-            && $notificaciones->every(fn (array $notificacion) => in_array($notificacion['estado_id'], $estados, true))));
-})->with([
-    ['admin', [DatosEjemplo::PENDIENTE_ADMIN]],
-    ['coordinador', [DatosEjemplo::PENDIENTE_COORDINADOR]],
-    ['docente', [DatosEjemplo::BORRADOR, DatosEjemplo::CORRECCION]],
-]);
+// Las notificaciones reales (tabla `notificaciones`) se prueban en Reservas/HistorialNotificacionesTest.
 
 test('the side menu starts expanded until the user collapses it', function () {
     verComo('admin');

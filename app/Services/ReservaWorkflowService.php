@@ -24,12 +24,15 @@ use Illuminate\Validation\ValidationException;
  * Cada transición: se ejecuta en una transacción con la fila bloqueada, se valida
  * contra TRANSICIONES (estado de origen + quién creó la reserva), se autoriza con
  * ReservaPolicy, exige observación cuando corresponde, aplica validaciones estrictas
- * o de traslape, actualiza los detalles y registra la acción en historial_reservas.
+ * o de traslape, actualiza los detalles, registra la acción en historial_reservas y
+ * genera las notificaciones (NotificacionService), todo en la misma transacción.
  *
  * @phpstan-type Transicion array{accion: string, de: int, a: int, creador?: 'docente'|'coordinador', permiso: string, observacion: bool, estricta: bool, traslapes: 'avisar'|'bloquear'|null, detalles: string|null, historial: string}
  */
 class ReservaWorkflowService
 {
+    public function __construct(private readonly NotificacionService $notificaciones) {}
+
     public const ENVIAR = 'enviar';
 
     public const APROBAR = 'aprobar';
@@ -140,6 +143,8 @@ class ReservaWorkflowService
                 'accion' => $transicion['historial'],
                 'comentario' => $observacion !== '' ? $observacion : null,
             ]);
+
+            $this->notificaciones->trasTransicion($actual, $usuario, $observacion);
 
             $reserva->setRawAttributes($actual->getAttributes(), true);
 

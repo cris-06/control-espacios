@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\LicenciaturaController;
 use App\Http\Controllers\Admin\UsuarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
+use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\ReservaController;
 use App\Http\Controllers\ReservaTransicionController;
@@ -23,6 +24,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('reservas/{reserva}/transicion', ReservaTransicionController::class)
         ->middleware('throttle:30,1')
         ->name('reservas.transicion');
+
+    // Notificaciones propias (tabla `notificaciones`).
+    Route::get('notificaciones', [NotificacionController::class, 'index'])->name('notificaciones.index');
+    Route::post('notificaciones/leer-todas', [NotificacionController::class, 'leerTodas'])->name('notificaciones.leer-todas');
+    Route::post('notificaciones/{notificacion}/leer', [NotificacionController::class, 'leer'])
+        ->whereNumber('notificacion')
+        ->name('notificaciones.leer');
 });
 
 // Coordinación y administración.

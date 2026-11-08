@@ -53,3 +53,38 @@ export function sinVacios(
         ),
     );
 }
+
+const formatoRelativo = new Intl.RelativeTimeFormat('es-MX', { numeric: 'auto' });
+const formatoFechaHora = new Intl.DateTimeFormat('es-MX', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+});
+
+// "hace 5 minutos", "ayer"… y fecha completa pasada una semana.
+export function haceCuanto(fechaIso: string): string {
+    const fecha = new Date(fechaIso);
+    const segundos = Math.round((fecha.getTime() - Date.now()) / 1000);
+    const absolutos = Math.abs(segundos);
+
+    if (absolutos < 60) {
+        return 'hace un momento';
+    }
+
+    if (absolutos < 3600) {
+        return formatoRelativo.format(Math.round(segundos / 60), 'minute');
+    }
+
+    if (absolutos < 86400) {
+        return formatoRelativo.format(Math.round(segundos / 3600), 'hour');
+    }
+
+    if (absolutos < 7 * 86400) {
+        return formatoRelativo.format(Math.round(segundos / 86400), 'day');
+    }
+
+    return formatoFechaHora.format(fecha);
+}
+
+export function formatearFechaHora(fechaIso: string): string {
+    return formatoFechaHora.format(new Date(fechaIso));
+}

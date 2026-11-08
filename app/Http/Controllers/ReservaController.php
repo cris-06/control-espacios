@@ -126,7 +126,7 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $this->reservas->actualizar($reserva, $request->datosReserva(), $request->datosDetalles());
+        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => 'Reserva actualizada.']);
 

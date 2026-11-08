@@ -176,6 +176,36 @@ class Reserva extends Model
         $query->where('usuario_creador_id', $user->id);
     }
 
+    /**
+     * Reservas que esperan una acción de este usuario: el docente, sus borradores y
+     * correcciones; el coordinador, las de sus licenciaturas pendientes de revisión;
+     * administración, las pendientes de autorizar.
+     *
+     * @param  Builder<Reserva>  $query
+     */
+    public function scopePorAtender(Builder $query, User $user): void
+    {
+        $query->visiblesPara($user);
+
+        if ($user->esAdministrador()) {
+            $query->where('estado_id', EstadoReserva::PENDIENTE_ADMIN);
+
+            return;
+        }
+
+        $query->where(function (Builder $q) use ($user): void {
+            $q->where(fn (Builder $propias) => $propias
+                ->where('usuario_creador_id', $user->id)
+                ->whereIn('estado_id', [EstadoReserva::BORRADOR, EstadoReserva::CORRECCION]));
+
+            if ($user->esCoordinador()) {
+                $q->orWhere(fn (Builder $revision) => $revision
+                    ->where('usuario_creador_id', '!=', $user->id)
+                    ->where('estado_id', EstadoReserva::PENDIENTE_COORDINADOR));
+            }
+        });
+    }
+
     public function enEstado(int ...$estados): bool
     {
         return in_array($this->estado_id, $estados, true);

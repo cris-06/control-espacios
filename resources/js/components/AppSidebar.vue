@@ -45,7 +45,7 @@ const mainNavItems = computed<NavItem[]>(() => [
         title: esDocente.value ? 'Mis solicitudes' : 'Solicitudes',
         href: solicitudes(),
         icon: ClipboardList,
-        conteo: page.props.demo?.notificaciones.length,
+        conteo: page.props.porAtender || undefined,
     },
     ...(page.props.auth.permisos.verReportes
         ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
