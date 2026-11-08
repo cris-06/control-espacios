@@ -19,6 +19,15 @@ import {
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+type RequerimientoAsignado = {
+    id: number;
+    nombre: string;
+    pivot: {
+        id: number;
+        cantidad_disponible: number;
+    };
+};
+
 // Campos definidos en BD_Reservas_corregida.sql
 type Espacio = {
     id: number;
@@ -31,6 +40,7 @@ type Espacio = {
     maximo_alumnos: number | null;
     color_calendario: string;
     estatus: 'disponible' | 'mantenimiento' | 'inactivo';
+    requerimientos: RequerimientoAsignado[];
 };
 
 const props = defineProps<{
@@ -387,12 +397,63 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                         <strong>Máximo de alumnos:</strong>
                         {{ detalleSeleccionado.maximo_alumnos ?? 'Sin definir' }}
                     </p>
+                    
                     <p>
                         <strong>Estatus:</strong>
                         {{ detalleSeleccionado.estatus }}
                     </p>
                 </div>
+
+                <!-- REQUERIMIENTOS DEL ESPACIO -->
+                <div class="mt-5 border-t pt-4">
+                    <h4 class="mb-3 text-sm font-semibold">
+                        Requerimientos disponibles
+                    </h4>
+
+                    <div
+                        v-if="detalleSeleccionado.requerimientos?.length"
+                        class="overflow-hidden rounded-lg border"
+                    >
+                        <table class="w-full text-sm">
+                            <thead class="bg-muted/50">
+                                <tr>
+                                    <th class="px-4 py-3 text-left">
+                                        Requerimiento
+                                    </th>
+                                    <th class="px-4 py-3 text-right">
+                                        Cantidad disponible
+                                    </th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                <tr
+                                    v-for="requerimiento in detalleSeleccionado.requerimientos"
+                                    :key="requerimiento.id"
+                                    class="border-t"
+                                >
+                                    <td class="px-4 py-3">
+                                        {{ requerimiento.nombre }}
+                                    </td>
+
+                                    <td class="px-4 py-3 text-right">
+                                        {{
+                                            requerimiento.pivot
+                                                .cantidad_disponible
+                                        }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p
+                        v-else
+                        class="text-sm text-muted-foreground"
+                    >
+                        Este espacio no tiene requerimientos asignados.
+                    </p>
+                </div>
+
             </div>
         </TarjetaSeccion>
-    </PaginaBase>
-</template>

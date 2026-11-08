@@ -17,7 +17,7 @@ class EspacioController extends Controller
     public function index(): Response
     {
         // Consultar los espacios registrados
-        $espacios = Espacio::orderBy('nombre')->get();
+        $espacios = Espacio::with('requerimientos')->orderBy('nombre')->get();
 
         // Consultar únicamente requerimientos activos
         $requerimientos = Requerimiento::where('estatus', 'activo')
