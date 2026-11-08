@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
+
 import {
+    Building2,
     CalendarDays,
     ChartColumn,
+    ClipboardCheck,
     ClipboardList,
     GraduationCap,
     LayoutGrid,
+    ListChecks,
     Users,
 } from '@lucide/vue';
+
 import { useMounted } from '@vueuse/core';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -51,15 +56,34 @@ const mainNavItems = computed<NavItem[]>(() => [
         ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
         : []),
     ...(page.props.auth.permisos.administrar
-        ? [
-              { title: 'Usuarios', href: usuarios(), icon: Users },
-              {
-                  title: 'Licenciaturas',
-                  href: licenciaturas(),
-                  icon: GraduationCap,
-              },
-          ]
-        : []),
+    ? [
+          {
+              title: 'Usuarios',
+              href: usuarios(),
+              icon: Users,
+          },
+          {
+              title: 'Licenciaturas',
+              href: licenciaturas(),
+              icon: GraduationCap,
+          },
+          {
+              title: 'Espacios',
+              href: '/espacios',
+              icon: Building2,
+          },
+          {
+              title: 'Requerimientos',
+              href: '/requerimientos',
+              icon: ListChecks,
+          },
+          {
+              title: 'Actividades',
+              href: '/actividades',
+              icon: ClipboardCheck,
+          },
+      ]
+    : []),
 ]);
 
 const { open, isMobile } = useSidebar();

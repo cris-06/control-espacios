@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Validation\ValidationException;
 
 class RequerimientoController extends Controller
 {
@@ -23,19 +24,39 @@ class RequerimientoController extends Controller
     }
 
     // Registrar un requerimiento
+
     public function store(Request $request): RedirectResponse
     {
         $datos = $request->validate([
-            'nombre' => [
-                'required',
-                'string',
-                'max:100',
-                Rule::unique('requerimientos', 'nombre'),
-            ],
+            'nombre' => ['required', 'string', 'max:100'],
         ]);
 
+        $nombre = trim($datos['nombre']);
+
+        // Buscar el nombre, incluso si fue eliminado
+        $existente = Requerimiento::where('nombre', $nombre)->first();
+
+        if ($existente) {
+            // Si estaba eliminado, recuperarlo
+            if ($existente->estatus === 'eliminado') {
+                $existente->update([
+                    'estatus' => 'activo',
+                ]);
+
+                return back()->with(
+                    'success',
+                    'Requerimiento recuperado correctamente.'
+                );
+            }
+
+            // Si ya está activo, evitar duplicarlo
+            throw ValidationException::withMessages([
+                'nombre' => 'Este requerimiento ya está registrado.',
+            ]);
+        }
+
         Requerimiento::create([
-            'nombre' => $datos['nombre'],
+            'nombre' => $nombre,
             'estatus' => 'activo',
         ]);
 

@@ -8,6 +8,7 @@ use Illuminate\Validation\Rule;
 use App\Models\Actividad;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Validation\ValidationException;
 
 class ActividadController extends Controller
 {
@@ -20,19 +21,39 @@ class ActividadController extends Controller
         ]);
     }
 
+
     public function store(Request $request): RedirectResponse
     {
         $datos = $request->validate([
-            'nombre' => [
-                'required',
-                'string',
-                'max:150',
-                Rule::unique('actividades', 'nombre'),
-            ],
+            'nombre' => ['required', 'string', 'max:150'],
         ]);
 
+        $nombre = trim($datos['nombre']);
+
+        // Buscar la actividad, aunque esté eliminada
+        $existente = Actividad::where('nombre', $nombre)->first();
+
+        if ($existente) {
+            // Recuperar la actividad eliminada
+            if ($existente->estatus === 'eliminada') {
+                $existente->update([
+                    'estatus' => 'activa',
+                ]);
+
+                return back()->with(
+                    'success',
+                    'Actividad recuperada correctamente.'
+                );
+            }
+
+            // Evitar duplicados activos
+            throw ValidationException::withMessages([
+                'nombre' => 'Esta actividad ya está registrada.',
+            ]);
+        }
+
         Actividad::create([
-            'nombre' => $datos['nombre'],
+            'nombre' => $nombre,
             'estatus' => 'activa',
         ]);
 
@@ -41,6 +62,7 @@ class ActividadController extends Controller
             'Actividad registrada correctamente.'
         );
     }
+
 
     public function update(
         Request $request,
