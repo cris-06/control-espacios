@@ -1,6 +1,5 @@
-
 <script setup lang="ts">
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, usePage } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import { Ellipsis, Eye, RotateCcw, Search } from '@lucide/vue';
 
@@ -78,8 +77,9 @@ const espacioEstadoId = ref<number | null>(null);
 type EstadoEspacio = 'disponible' | 'mantenimiento' | 'inactivo';
 
 // Se habilitará cuando estén integrados los permisos
-const habilitarEscritura = false;
-
+const habilitarEscritura = Boolean(
+    usePage().props.auth.permisos.administrar
+);
 const formEstado = useForm({
     estatus: 'disponible' as EstadoEspacio,
 });
@@ -187,8 +187,8 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
     >
     <!-- Formulario para agregar espacios -->
 <FormularioEspacio
-:requerimientos="requerimientos"
-:habilitar-guardado="false"
+    :requerimientos="requerimientos"
+    :habilitar-guardado="habilitarEscritura"
 />
 
     <TarjetaSeccion
@@ -386,9 +386,6 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
 </p>
     </div>
 
-    <p class="text-xs text-muted-foreground">
-        Los cambios de estado todavía no se guardan.
-    </p>
 
     <div class="flex justify-end gap-2">
         <Button
@@ -431,6 +428,18 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                         Cerrar
                     </Button>
                 </div>
+
+<!-- Fotografía del espacio seleccionado -->
+<div
+    v-if="detalleSeleccionado.foto"
+    class="mb-5"
+>
+    <img
+        :src="`/storage/${detalleSeleccionado.foto}`"
+        :alt="`Fotografía de ${detalleSeleccionado.nombre}`"
+        class="h-56 w-full max-w-lg rounded-lg border object-cover"
+    />
+</div>
 
                 <div class="grid gap-3 text-sm sm:grid-cols-2">
                     <p>

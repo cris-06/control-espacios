@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,9 +42,9 @@ const emit = defineEmits<{
     cerrar: [];
 }>();
 
-// Se activará únicamente después de integrar las rutas protegidas
-// y comprobar que el usuario tiene permiso de administrador.
-const habilitarEscritura = false;
+const habilitarEscritura = Boolean(
+    usePage().props.auth.permisos.administrar
+);
 
 const form = useForm({
     nombre: '',
@@ -209,24 +209,63 @@ const guardarCambios = () => {
                 <p v-if="form.errors.maximo_alumnos" class="text-sm text-red-600">{{ form.errors.maximo_alumnos }}</p>
             </div>
         </div>
+<!-- FOTOGRAFÍA DEL ESPACIO -->
+<div class="space-y-3">
+    <label class="block text-sm font-medium">
+        Fotografía del espacio (opcional)
+    </label>
 
-        <div class="space-y-2">
-            <label class="text-sm font-medium" for="editar-foto">Fotografía del espacio (opcional)</label>
-            <p v-if="espacio.foto" class="text-xs text-muted-foreground">
-                Ya existe una fotografía registrada. Si no eliges otra, se conservará.
-            </p>
-            <input
-                id="editar-foto"
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                class="block w-full rounded-md border bg-background p-2 text-sm"
-                @change="seleccionarFoto"
-            />
-            <p v-if="form.foto" class="text-xs text-muted-foreground">
-                Nueva fotografía: {{ form.foto.name }}
-            </p>
-            <p v-if="form.errors.foto" class="text-sm text-red-600">{{ form.errors.foto }}</p>
-        </div>
+    <!-- Mostrar fotografía guardada -->
+    <div v-if="espacio.foto" class="space-y-2">
+        <p class="text-xs text-muted-foreground">
+            Fotografía actual:
+        </p>
+
+        <img
+            :src="`/storage/${espacio.foto}`"
+            :alt="`Fotografía de ${espacio.nombre}`"
+            class="h-48 w-full max-w-md rounded-lg border object-cover"
+        />
+    </div>
+
+    <!-- Selector de fotografía -->
+    <input
+        id="editar-foto"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp"
+        class="sr-only"
+        @change="seleccionarFoto"
+    />
+
+    <label
+        for="editar-foto"
+        class="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+    >
+        Seleccionar fotografía
+    </label>
+
+    <p
+        v-if="form.foto"
+        class="text-xs text-muted-foreground"
+    >
+        Nueva fotografía: {{ form.foto.name }}
+    </p>
+
+    <p
+        v-else
+        class="text-xs text-muted-foreground"
+    >
+        Si no seleccionas otra fotografía, se conservará la actual.
+    </p>
+
+    <p
+        v-if="form.errors.foto"
+        class="text-sm text-red-600"
+    >
+        {{ form.errors.foto }}
+    </p>
+</div>
+
 
         <div class="space-y-3 border-t pt-4">
             <h4 class="text-sm font-semibold">Requerimientos y cantidades disponibles</h4>
@@ -289,10 +328,6 @@ const guardarCambios = () => {
             </p>
         </div>
 
-        <p class="text-xs text-muted-foreground">
-            Vista previa de edición. Los cambios todavía no se guardan hasta integrar
-            las rutas protegidas y los permisos de administrador.
-        </p>
 
         <div class="flex justify-end gap-2">
             <Button type="button" variant="outline" @click="emit('cerrar')">

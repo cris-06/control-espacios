@@ -1,4 +1,3 @@
-
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
 import { useForm } from '@inertiajs/vue3';
@@ -390,15 +389,30 @@ const guardarEspacio = () => {
                     Fotografía del espacio
                 </label>
 
-                <input
-                    id="foto"
-                    ref="fotoInput"
-                    name="foto"
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.webp"
-                    @change="seleccionarFoto"
-                    class="w-full rounded-md border border-input p-2 text-sm"
-                />
+
+<div class="flex flex-wrap items-center gap-3">
+    <input
+        id="foto"
+        ref="fotoInput"
+        name="foto"
+        type="file"
+        accept=".jpg,.jpeg,.png,.webp"
+        @change="seleccionarFoto"
+        class="sr-only"
+    />
+
+    <label
+        for="foto"
+        class="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+    >
+        Seleccionar fotografía
+    </label>
+
+    <span class="text-sm text-muted-foreground">
+        {{ form.foto?.name ?? 'Ningún archivo seleccionado' }}
+    </span>
+</div>
+
 
                 <p class="text-xs text-muted-foreground">
                     JPG, PNG o WEBP — máximo 3 MB.
