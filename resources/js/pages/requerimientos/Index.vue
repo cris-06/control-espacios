@@ -1,6 +1,5 @@
-
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { computed, ref } from 'vue';
 import {
     Ellipsis,
@@ -36,7 +35,27 @@ const props = defineProps<{
 }>();
 
 // Formulario para agregar
-const nombreNuevo = ref('');
+
+const habilitarEscritura = false;
+
+const formNuevo = useForm({
+    nombre: '',
+});
+
+// Registrar requerimiento en Laravel
+const guardarRequerimiento = () => {
+    if (!habilitarEscritura || formNuevo.processing) {
+        return;
+    }
+
+    formNuevo.post('/requerimientos', {
+        preserveScroll: true,
+
+        onSuccess: () => {
+            formNuevo.reset();
+        },
+    });
+};
 
 // Buscador y filtros
 const busqueda = ref('');
@@ -130,7 +149,7 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                 <!-- AGREGAR REQUERIMIENTO -->
                 <form
                     class="space-y-3"
-                    @submit.prevent
+                    @submit.prevent="guardarRequerimiento"
                 >
                     <h3 class="text-sm font-semibold">
                         Agregar requerimiento
@@ -144,28 +163,41 @@ const abrirCambioEstado = (requerimiento: Requerimiento) => {
                             Nombre del requerimiento
                         </label>
 
-                        <div class="flex flex-col gap-2 sm:flex-row">
-                            <Input
-                                id="nuevo-requerimiento"
-                                v-model="nombreNuevo"
-                                placeholder="Ej. Proyector, mesas, sillas..."
-                                maxlength="100"
-                                required
-                            />
+                        <div class="flex flex-col gap-2 sm:flex-row sm:items-start">
+                            <!-- Campo para el nombre -->
+                            <div class="min-w-0 flex-1">
+                                <Input
+                                    id="nuevo-requerimiento"
+                                    v-model="formNuevo.nombre"
+                                    placeholder="Ej. Proyector, mesas, sillas..."
+                                    maxlength="100"
+                                    class="w-full"
+                                    required
+                                />
 
+                                <!-- Mensaje de validación -->
+                                <p
+                                    v-if="formNuevo.errors.nombre"
+                                    class="mt-1 text-sm text-red-600"
+                                >
+                                    {{ formNuevo.errors.nombre }}
+                                </p>
+                            </div>
+
+                            <!-- Botón Agregar -->
                             <Button
                                 type="submit"
-                                disabled
+                                :disabled="!habilitarEscritura || formNuevo.processing"
                             >
                                 <Plus class="mr-1 size-4" />
-                                Agregar
+                                {{ formNuevo.processing ? 'Guardando...' : 'Agregar' }}
                             </Button>
                         </div>
                     </div>
 
                     <p class="text-xs text-muted-foreground">
-                        El registro se habilitará cuando
-                        se integren los permisos de administrador.
+                        El registro se habilitará cuando se integren
+                        los permisos de administrador.
                     </p>
                 </form>
 
