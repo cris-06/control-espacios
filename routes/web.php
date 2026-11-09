@@ -1,17 +1,17 @@
 <?php
 
+use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\Admin\LicenciaturaController;
 use App\Http\Controllers\Admin\UsuarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
+use App\Http\Controllers\EspacioController;
 use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ReporteController;
+use App\Http\Controllers\RequerimientoController;
 use App\Http\Controllers\ReservaController;
 use App\Http\Controllers\ReservaTransicionController;
 use App\Http\Controllers\SolicitudController;
-use App\Http\Controllers\EspacioController;
-use App\Http\Controllers\RequerimientoController;
-use App\Http\Controllers\ActividadController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard')->name('home');
@@ -73,70 +73,67 @@ Route::middleware([
 
     Route::get('espacios', [
         EspacioController::class,
-        'index'
+        'index',
     ])->name('espacios.index');
 
     Route::post('espacios', [
         EspacioController::class,
-        'store'
+        'store',
     ])->name('espacios.store');
 
     Route::put('espacios/{espacio}', [
         EspacioController::class,
-        'update'
+        'update',
     ])->name('espacios.update');
 
     Route::patch('espacios/{espacio}/estatus', [
         EspacioController::class,
-        'cambiarEstatus'
+        'cambiarEstatus',
     ])->name('espacios.estatus');
-
 
     // CATÁLOGO DE REQUERIMIENTOS
 
     Route::get('requerimientos', [
         RequerimientoController::class,
-        'index'
+        'index',
     ])->name('requerimientos.index');
 
     Route::post('requerimientos', [
         RequerimientoController::class,
-        'store'
+        'store',
     ])->name('requerimientos.store');
 
     Route::put('requerimientos/{requerimiento}', [
         RequerimientoController::class,
-        'update'
+        'update',
     ])->name('requerimientos.update');
 
     Route::patch('requerimientos/{requerimiento}/estatus', [
         RequerimientoController::class,
-        'cambiarEstatus'
+        'cambiarEstatus',
     ])->name('requerimientos.estatus');
-
 
     // CATÁLOGO DE ACTIVIDADES
 
     Route::get('actividades', [
         ActividadController::class,
-        'index'
+        'index',
     ])->name('actividades.index');
 
     Route::post('actividades', [
         ActividadController::class,
-        'store'
+        'store',
     ])->name('actividades.store');
 
     Route::put('actividades/{actividad}', [
         ActividadController::class,
-        'update'
+        'update',
     ])->name('actividades.update');
 
     Route::patch('actividades/{actividad}/estatus', [
         ActividadController::class,
-        'cambiarEstatus'
+        'cambiarEstatus',
     ])->name('actividades.estatus');
 });
 
-
-require __DIR__ . '/settings.php';
+require __DIR__.'/settings.php';

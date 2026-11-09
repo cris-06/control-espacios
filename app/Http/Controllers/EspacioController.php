@@ -152,10 +152,8 @@ class EspacioController extends Controller
                 ]),
             ],
         ], [
-            'estatus.required' =>
-            'Debes seleccionar un estado.',
-            'estatus.in' =>
-            'El estado seleccionado no es válido.',
+            'estatus.required' => 'Debes seleccionar un estado.',
+            'estatus.in' => 'El estado seleccionado no es válido.',
         ]);
 
         $espacio->update([
@@ -170,7 +168,11 @@ class EspacioController extends Controller
             );
     }
 
-    // Validaciones compartidas para registrar y editar
+    /**
+     * Validaciones compartidas para registrar y editar
+     *
+     * @return array<string, mixed>
+     */
     private function validarDatos(
         Request $request,
         ?Espacio $espacio = null
@@ -238,53 +240,38 @@ class EspacioController extends Controller
             ],
         ], [
             // Mensajes generales
-            'required' =>
-            'El campo :attribute es obligatorio.',
+            'required' => 'El campo :attribute es obligatorio.',
 
-            'string' =>
-            'El campo :attribute debe contener texto.',
+            'string' => 'El campo :attribute debe contener texto.',
 
-            'integer' =>
-            'El campo :attribute debe ser un número entero.',
+            'integer' => 'El campo :attribute debe ser un número entero.',
 
-            'min' =>
-            'El campo :attribute debe ser como mínimo :min.',
+            'min' => 'El campo :attribute debe ser como mínimo :min.',
 
-            'max' =>
-            'El campo :attribute no debe superar :max.',
+            'max' => 'El campo :attribute no debe superar :max.',
 
-            'array' =>
-            'Los requerimientos deben enviarse como una lista.',
+            'array' => 'Los requerimientos deben enviarse como una lista.',
 
-            'distinct' =>
-            'No puedes repetir el mismo requerimiento.',
+            'distinct' => 'No puedes repetir el mismo requerimiento.',
 
-            'exists' =>
-            'El requerimiento seleccionado no es válido.',
+            'exists' => 'El requerimiento seleccionado no es válido.',
 
             // Nombre
-            'nombre.unique' =>
-            'Ya existe un espacio registrado con ese nombre.',
+            'nombre.unique' => 'Ya existe un espacio registrado con ese nombre.',
 
             // Capacidad
-            'minimo_alumnos.lte' =>
-            'El mínimo de alumnos no puede superar el máximo de alumnos.',
+            'minimo_alumnos.lte' => 'El mínimo de alumnos no puede superar el máximo de alumnos.',
 
-            'maximo_alumnos.lte' =>
-            'El máximo de alumnos no puede superar la capacidad total del espacio.',
+            'maximo_alumnos.lte' => 'El máximo de alumnos no puede superar la capacidad total del espacio.',
 
             // Fotografía
-            'foto.uploaded' =>
-            'No se pudo subir la fotografía. Revisa la configuración de carga de PHP.',
+            'foto.uploaded' => 'No se pudo subir la fotografía. Revisa la configuración de carga de PHP.',
 
-            'foto.image' =>
-            'El archivo seleccionado debe ser una imagen válida.',
+            'foto.image' => 'El archivo seleccionado debe ser una imagen válida.',
 
-            'foto.mimes' =>
-            'Solo se permiten fotografías JPG, JPEG, PNG o WEBP.',
+            'foto.mimes' => 'Solo se permiten fotografías JPG, JPEG, PNG o WEBP.',
 
-            'foto.max' =>
-            'La fotografía no debe superar los 3 MB.',
+            'foto.max' => 'La fotografía no debe superar los 3 MB.',
         ], [
             // Nombres de campos en español
             'nombre' => 'nombre del espacio',
@@ -295,8 +282,7 @@ class EspacioController extends Controller
             'maximo_alumnos' => 'máximo de alumnos',
             'foto' => 'fotografía',
             'requerimientos.*.id' => 'requerimiento',
-            'requerimientos.*.cantidad_disponible' =>
-            'cantidad disponible',
+            'requerimientos.*.cantidad_disponible' => 'cantidad disponible',
         ]);
     }
 }

@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\RedirectResponse;
-use Illuminate\Validation\Rule;
 use App\Models\Actividad;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Validation\ValidationException;
 
 class ActividadController extends Controller
 {
@@ -20,7 +20,6 @@ class ActividadController extends Controller
             'actividades' => $actividades,
         ]);
     }
-
 
     public function store(Request $request): RedirectResponse
     {
@@ -62,7 +61,6 @@ class ActividadController extends Controller
             'Actividad registrada correctamente.'
         );
     }
-
 
     public function update(
         Request $request,

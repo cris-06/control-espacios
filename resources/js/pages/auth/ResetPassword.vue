@@ -46,7 +46,10 @@ const inputEmail = ref(props.email);
                     class="mt-1 block w-full"
                     readonly
                 />
-                <InputError :message="errors.correo ?? errors.email" class="mt-2" />
+                <InputError
+                    :message="errors.correo ?? errors.email"
+                    class="mt-2"
+                />
             </div>
 
             <div class="grid gap-2">
