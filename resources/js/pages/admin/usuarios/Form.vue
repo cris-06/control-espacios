@@ -10,7 +10,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
 import { index } from '@/routes/admin/usuarios';
-import type { LicenciaturaFila, RolAsignable, UsuarioFormulario } from '@/types';
+import type {
+    LicenciaturaFila,
+    RolAsignable,
+    UsuarioFormulario,
+} from '@/types';
 
 const props = defineProps<{
     usuario: UsuarioFormulario | null;
@@ -29,15 +33,11 @@ const titulo = computed(() =>
     esEdicion.value ? 'Editar usuario' : 'Nuevo usuario',
 );
 
-const rolId = ref<string>(
-    props.usuario ? String(props.usuario.rol_id) : '',
-);
+const rolId = ref<string>(props.usuario ? String(props.usuario.rol_id) : '');
 const rolSeleccionado = computed(() =>
     props.roles.find((rol) => String(rol.id) === rolId.value),
 );
-const asignadas = computed(
-    () => new Set(props.usuario?.licenciaturas ?? []),
-);
+const asignadas = computed(() => new Set(props.usuario?.licenciaturas ?? []));
 
 const accion = computed(() =>
     props.usuario
@@ -138,7 +138,11 @@ const nombreRol = (nombre: string) =>
                     </CampoFormulario>
                 </div>
 
-                <CampoFormulario id="rol_id" etiqueta="Rol" :error="errors.rol_id">
+                <CampoFormulario
+                    id="rol_id"
+                    etiqueta="Rol"
+                    :error="errors.rol_id"
+                >
                     <!-- El propio rol no se cambia: el campo se muestra bloqueado y se envía oculto. -->
                     <input
                         v-if="usuario?.esYoMismo"

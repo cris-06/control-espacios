@@ -46,7 +46,9 @@ const estadoId = ref(
 );
 
 const licenciaturaId = ref(
-    props.filtros.licenciatura_id ? String(props.filtros.licenciatura_id) : null,
+    props.filtros.licenciatura_id
+        ? String(props.filtros.licenciatura_id)
+        : null,
 );
 
 // Solo se ofrecen las licenciaturas propias; el backend responde 403 a cualquier otra.

@@ -98,7 +98,7 @@ class ReservaWorkflowService
 
             if ($transicion['observacion'] && $observacion === '') {
                 throw ValidationException::withMessages([
-                    'observacion' => 'Escribe una observación: es obligatoria para ' . mb_strtolower(self::ETIQUETAS[$accion]) . '.',
+                    'observacion' => 'Escribe una observación: es obligatoria para '.mb_strtolower(self::ETIQUETAS[$accion]).'.',
                 ]);
             }
 
@@ -244,7 +244,7 @@ class ReservaWorkflowService
         $hoy = Date::today()->toDateString();
 
         foreach ($detalles->values() as $i => $detalle) {
-            $n = 'Espacio ' . ($i + 1);
+            $n = 'Espacio '.($i + 1);
 
             if ($detalle->espacio === null || ! $detalle->espacio->estaDisponible()) {
                 $errores[] = "$n: el espacio no está disponible (inactivo o en mantenimiento).";
@@ -267,7 +267,7 @@ class ReservaWorkflowService
             // Dos bloques de la misma reserva no pueden pisarse entre sí.
             foreach ($detalles->values()->slice($i + 1) as $j => $otro) {
                 if ($this->seTraslapan($detalle, $otro)) {
-                    $errores[] = "$n y espacio " . ($j + 1) . ': se traslapan en el mismo espacio y horario.';
+                    $errores[] = "$n y espacio ".($j + 1).': se traslapan en el mismo espacio y horario.';
                 }
             }
         }
@@ -294,7 +294,7 @@ class ReservaWorkflowService
                 ->where('hora_fin', '>', $detalle->hora_inicio)
                 ->where('reserva_id', '!=', $reserva->id)
                 ->where('estado_detalle', ReservaDetalle::AUTORIZADA)
-                ->whereHas('reserva', fn($q) => $q->where('estado_id', E::AUTORIZADA))
+                ->whereHas('reserva', fn ($q) => $q->where('estado_id', E::AUTORIZADA))
                 ->with('reserva:id,folio')
                 ->lockForUpdate()
                 ->get();

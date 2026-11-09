@@ -53,11 +53,7 @@ const seleccionarFoto = (event: Event) => {
     form.clearErrors('foto');
 
     if (archivo) {
-        const tiposPermitidos = [
-            'image/jpeg',
-            'image/png',
-            'image/webp',
-        ];
+        const tiposPermitidos = ['image/jpeg', 'image/png', 'image/webp'];
 
         if (!tiposPermitidos.includes(archivo.type)) {
             form.setError('foto', 'Selecciona una imagen JPG, PNG o WEBP.');
@@ -83,9 +79,7 @@ const prepararRequerimientos = () => {
         .filter(([, seleccionado]) => seleccionado)
         .map(([id]) => ({
             id: Number(id),
-            cantidad_disponible: Number(
-                cantidades[Number(id)] || 0,
-            ),
+            cantidad_disponible: Number(cantidades[Number(id)] || 0),
         }));
 };
 
@@ -145,22 +139,14 @@ const guardarEspacio = () => {
 
 <template>
     <TarjetaSeccion titulo="Agregar espacio">
-        <form
-            class="space-y-5 p-4"
-            @submit.prevent="guardarEspacio"
-        >
+        <form class="space-y-5 p-4" @submit.prevent="guardarEspacio">
             <!-- INFORMACIÓN GENERAL -->
             <div class="space-y-3">
-                <h3 class="text-sm font-semibold">
-                    Información general
-                </h3>
+                <h3 class="text-sm font-semibold">Información general</h3>
 
                 <!-- Nombre -->
                 <div>
-                    <label
-                        for="nombre"
-                        class="mb-1 block text-sm font-medium"
-                    >
+                    <label for="nombre" class="mb-1 block text-sm font-medium">
                         Nombre del espacio
                     </label>
 
@@ -235,9 +221,7 @@ const guardarEspacio = () => {
 
             <!-- CAPACIDAD -->
             <div class="space-y-3 border-t pt-4">
-                <h3 class="text-sm font-semibold">
-                    Capacidad del espacio
-                </h3>
+                <h3 class="text-sm font-semibold">Capacidad del espacio</h3>
 
                 <div class="grid gap-3 sm:grid-cols-3">
                     <!-- Capacidad total -->
@@ -338,9 +322,7 @@ const guardarEspacio = () => {
                         :key="requerimiento.id"
                         class="flex items-center gap-3 rounded-lg border p-3"
                     >
-                        <label
-                            class="flex flex-1 items-center gap-2 text-sm"
-                        >
+                        <label class="flex flex-1 items-center gap-2 text-sm">
                             <input
                                 v-model="seleccionados[requerimiento.id]"
                                 type="checkbox"
@@ -360,10 +342,7 @@ const guardarEspacio = () => {
                     </div>
                 </div>
 
-                <p
-                    v-else
-                    class="text-sm text-muted-foreground"
-                >
+                <p v-else class="text-sm text-muted-foreground">
                     Todavía no hay requerimientos activos registrados.
                 </p>
 
@@ -375,53 +354,45 @@ const guardarEspacio = () => {
                 </p>
 
                 <p class="text-xs text-muted-foreground">
-                    Selecciona los requerimientos disponibles
-                    e indica la cantidad de cada uno.
+                    Selecciona los requerimientos disponibles e indica la
+                    cantidad de cada uno.
                 </p>
             </div>
 
             <!-- FOTOGRAFÍA -->
             <div class="space-y-2 border-t pt-4">
-                <label
-                    for="foto"
-                    class="block text-sm font-medium"
-                >
+                <label for="foto" class="block text-sm font-medium">
                     Fotografía del espacio
                 </label>
 
+                <div class="flex flex-wrap items-center gap-3">
+                    <input
+                        id="foto"
+                        ref="fotoInput"
+                        name="foto"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp"
+                        @change="seleccionarFoto"
+                        class="sr-only"
+                    />
 
-<div class="flex flex-wrap items-center gap-3">
-    <input
-        id="foto"
-        ref="fotoInput"
-        name="foto"
-        type="file"
-        accept=".jpg,.jpeg,.png,.webp"
-        @change="seleccionarFoto"
-        class="sr-only"
-    />
+                    <label
+                        for="foto"
+                        class="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
+                    >
+                        Seleccionar fotografía
+                    </label>
 
-    <label
-        for="foto"
-        class="inline-flex cursor-pointer items-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium hover:bg-muted"
-    >
-        Seleccionar fotografía
-    </label>
-
-    <span class="text-sm text-muted-foreground">
-        {{ form.foto?.name ?? 'Ningún archivo seleccionado' }}
-    </span>
-</div>
-
+                    <span class="text-sm text-muted-foreground">
+                        {{ form.foto?.name ?? 'Ningún archivo seleccionado' }}
+                    </span>
+                </div>
 
                 <p class="text-xs text-muted-foreground">
                     JPG, PNG o WEBP — máximo 3 MB.
                 </p>
 
-                <p
-                    v-if="form.errors.foto"
-                    class="text-sm text-red-600"
-                >
+                <p v-if="form.errors.foto" class="text-sm text-red-600">
                     {{ form.errors.foto }}
                 </p>
             </div>
@@ -432,11 +403,7 @@ const guardarEspacio = () => {
                     type="submit"
                     :disabled="!habilitarGuardado || form.processing"
                 >
-                    {{
-                        form.processing
-                            ? 'Guardando...'
-                            : 'Guardar espacio'
-                    }}
+                    {{ form.processing ? 'Guardando...' : 'Guardar espacio' }}
                 </Button>
             </div>
 
@@ -445,8 +412,8 @@ const guardarEspacio = () => {
                 v-if="!habilitarGuardado"
                 class="text-right text-xs text-muted-foreground"
             >
-                El guardado se habilitará cuando se integren
-                los permisos de administrador.
+                El guardado se habilitará cuando se integren los permisos de
+                administrador.
             </p>
         </form>
     </TarjetaSeccion>

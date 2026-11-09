@@ -44,7 +44,7 @@ type Espacio = {
 
 const props = defineProps<{
     espacios: Espacio[];
-     requerimientos: {
+    requerimientos: {
         id: number;
         nombre: string;
     }[];
@@ -57,10 +57,11 @@ const detalleId = ref<number | null>(null);
 // Espacio seleccionado para editar
 const espacioEditarId = ref<number | null>(null);
 
-const espacioEditar = computed(() =>
-    props.espacios.find(
-        (espacio) => espacio.id === espacioEditarId.value,
-    ) ?? null,
+const espacioEditar = computed(
+    () =>
+        props.espacios.find(
+            (espacio) => espacio.id === espacioEditarId.value,
+        ) ?? null,
 );
 
 const columnas = [
@@ -73,23 +74,20 @@ const columnas = [
 // Espacio seleccionado para cambiar su estado
 const espacioEstadoId = ref<number | null>(null);
 
-
 type EstadoEspacio = 'disponible' | 'mantenimiento' | 'inactivo';
 
 // Se habilitará cuando estén integrados los permisos
-const habilitarEscritura = Boolean(
-    usePage().props.auth.permisos.administrar
-);
+const habilitarEscritura = Boolean(usePage().props.auth.permisos.administrar);
 const formEstado = useForm({
     estatus: 'disponible' as EstadoEspacio,
 });
 
-
 // Obtener el espacio seleccionado
-const espacioCambiarEstado = computed(() =>
-    props.espacios.find(
-        (espacio) => espacio.id === espacioEstadoId.value,
-    ) ?? null,
+const espacioCambiarEstado = computed(
+    () =>
+        props.espacios.find(
+            (espacio) => espacio.id === espacioEstadoId.value,
+        ) ?? null,
 );
 
 // Abrir el apartado para cambiar el estado
@@ -113,28 +111,20 @@ const guardarEstado = () => {
         return;
     }
 
-    formEstado.patch(
-        `/espacios/${espacioEstadoId.value}/estatus`,
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                espacioEstadoId.value = null;
-            },
-        }
-    );
+    formEstado.patch(`/espacios/${espacioEstadoId.value}/estatus`, {
+        preserveScroll: true,
+        onSuccess: () => {
+            espacioEstadoId.value = null;
+        },
+    });
 };
-
-
-
 
 const espaciosFiltrados = computed(() => {
     const texto = busqueda.value.trim().toLowerCase();
 
     return props.espacios.filter((espacio) => {
         // Buscar únicamente por nombre
-        const coincideNombre = espacio.nombre
-            .toLowerCase()
-            .includes(texto);
+        const coincideNombre = espacio.nombre.toLowerCase().includes(texto);
 
         // Filtrar únicamente por estatus
         const coincideEstado =
@@ -145,21 +135,13 @@ const espaciosFiltrados = computed(() => {
     });
 });
 
-
-
 // Mostrar contador únicamente cuando existan filtros activos
 const hayFiltrosActivos = computed(() => {
-    return (
-        busqueda.value.trim() !== '' ||
-        filtroEstatus.value !== 'todos'
-    );
+    return busqueda.value.trim() !== '' || filtroEstatus.value !== 'todos';
 });
 
-
 const detalleSeleccionado = computed(() =>
-    props.espacios.find(
-        (espacio) => espacio.id === detalleId.value,
-    ),
+    props.espacios.find((espacio) => espacio.id === detalleId.value),
 );
 
 const limpiarFiltros = () => {
@@ -185,75 +167,64 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
         titulo="Administración de espacios"
         descripcion="Consulta y gestiona los espacios físicos de la universidad."
     >
-    <!-- Formulario para agregar espacios -->
-<FormularioEspacio
-    :requerimientos="requerimientos"
-    :habilitar-guardado="habilitarEscritura"
-/>
+        <!-- Formulario para agregar espacios -->
+        <FormularioEspacio
+            :requerimientos="requerimientos"
+            :habilitar-guardado="habilitarEscritura"
+        />
 
-    <TarjetaSeccion
-    titulo="Espacios registrados"
->
+        <TarjetaSeccion titulo="Espacios registrados">
+            <!-- BUSCADOR Y FILTROS -->
+            <div class="grid gap-3 border-b p-4 md:grid-cols-2">
+                <!-- Buscar por nombre o ubicación -->
+                <div>
+                    <label class="mb-1 block text-sm font-medium">
+                        Buscar espacio
+                    </label>
 
-<!-- BUSCADOR Y FILTROS -->
-<div class="grid gap-3 border-b p-4 md:grid-cols-2">
+                    <div class="relative">
+                        <Search
+                            class="absolute top-2.5 left-3 size-4 text-muted-foreground"
+                        />
 
-    <!-- Buscar por nombre o ubicación -->
-    <div>
-        <label class="mb-1 block text-sm font-medium">
-            Buscar espacio
-        </label>
+                        <Input
+                            v-model="busqueda"
+                            class="pl-9"
+                            placeholder="Buscar por nombre..."
+                        />
+                    </div>
+                </div>
 
-        <div class="relative">
-            <Search
-                class="absolute top-2.5 left-3 size-4 text-muted-foreground"
-            />
+                <!-- Filtro de estados -->
+                <div>
+                    <label class="mb-1 block text-sm font-medium">
+                        Estados
+                    </label>
 
-            <Input
-                v-model="busqueda"
-                class="pl-9"
-                placeholder="Buscar por nombre..."
-            />
-        </div>
-    </div>
+                    <select
+                        v-model="filtroEstatus"
+                        class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                        <option value="todos">Todos</option>
+                        <option value="disponible">Disponible</option>
+                        <option value="mantenimiento">Mantenimiento</option>
+                        <option value="inactivo">Inactivo</option>
+                    </select>
+                </div>
 
-    <!-- Filtro de estados -->
-    <div>
-        <label class="mb-1 block text-sm font-medium">
-            Estados
-        </label>
+                <!-- Limpiar filtros -->
+                <div class="flex justify-end md:col-span-2">
+                    <Button variant="outline" size="sm" @click="limpiarFiltros">
+                        <RotateCcw class="size-4" />
+                        Limpiar filtros
+                    </Button>
+                </div>
+            </div>
 
-        <select
-            v-model="filtroEstatus"
-            class="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-        >
-            <option value="todos">Todos</option>
-            <option value="disponible">Disponible</option>
-            <option value="mantenimiento">Mantenimiento</option>
-            <option value="inactivo">Inactivo</option>
-        </select>
-    </div>
-
-    <!-- Limpiar filtros -->
-    <div class="flex justify-end md:col-span-2">
-        <Button
-            variant="outline"
-            size="sm"
-            @click="limpiarFiltros"
-        >
-            <RotateCcw class="size-4" />
-            Limpiar filtros
-        </Button>
-    </div>
-</div>
-
-<!-- CONTADOR DE RESULTADOS -->
-<div
-    v-if="hayFiltrosActivos"
-    class="px-4 pt-3 text-sm font-medium"
->
-    Espacios encontrados: {{ espaciosFiltrados.length }}
-</div>
+            <!-- CONTADOR DE RESULTADOS -->
+            <div v-if="hayFiltrosActivos" class="px-4 pt-3 text-sm font-medium">
+                Espacios encontrados: {{ espaciosFiltrados.length }}
+            </div>
 
             <!-- TABLA -->
             <TablaDatos
@@ -293,7 +264,9 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                 <template #estatus="{ fila }">
                     <span
                         class="inline-flex rounded-full px-3 py-1 text-xs font-medium capitalize"
-                        :class="estilosEstatus[fila.estatus as Espacio['estatus']]"
+                        :class="
+                            estilosEstatus[fila.estatus as Espacio['estatus']]
+                        "
                     >
                         {{ fila.estatus }}
                     </span>
@@ -312,110 +285,89 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                             </Button>
                         </DropdownMenuTrigger>
 
+                        <DropdownMenuContent align="end">
+                            <!-- Ver detalles -->
+                            <DropdownMenuItem @select="verDetalles(fila.id)">
+                                <Eye class="mr-2 size-4" />
+                                Ver detalles
+                            </DropdownMenuItem>
 
-<DropdownMenuContent align="end">
-    <!-- Ver detalles -->
-    <DropdownMenuItem
-        @select="verDetalles(fila.id)"
-    >
-        <Eye class="mr-2 size-4" />
-        Ver detalles
-    </DropdownMenuItem>
+                            <!-- Editar espacio -->
+                            <DropdownMenuItem
+                                @select="espacioEditarId = fila.id"
+                            >
+                                Editar espacio
+                            </DropdownMenuItem>
 
-    <!-- Editar espacio -->
-    <DropdownMenuItem
-        @select="espacioEditarId = fila.id"
-    >
-        Editar espacio
-    </DropdownMenuItem>
-
-    <!-- Cambiar estado -->
-    <DropdownMenuItem
-        @select="abrirCambioEstado(fila)"
-    >
-        Cambiar estado
-    </DropdownMenuItem>
-</DropdownMenuContent>
-
+                            <!-- Cambiar estado -->
+                            <DropdownMenuItem @select="abrirCambioEstado(fila)">
+                                Cambiar estado
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
                     </DropdownMenu>
                 </template>
             </TablaDatos>
-<EditarEspacio
-    v-if="espacioEditar"
-    :espacio="espacioEditar"
-    :requerimientos="requerimientos"
-    @cerrar="espacioEditarId = null"
-/>
+            <EditarEspacio
+                v-if="espacioEditar"
+                :espacio="espacioEditar"
+                :requerimientos="requerimientos"
+                @cerrar="espacioEditarId = null"
+            />
 
-<!-- Cambiar estado del espacio -->
-<div
-    v-if="espacioCambiarEstado"
-    class="mt-4 space-y-4 rounded-lg border p-4"
->
-    <h3 class="text-base font-semibold">
-        Cambiar estado:
-        {{ espacioCambiarEstado.nombre }}
-    </h3>
+            <!-- Cambiar estado del espacio -->
+            <div
+                v-if="espacioCambiarEstado"
+                class="mt-4 space-y-4 rounded-lg border p-4"
+            >
+                <h3 class="text-base font-semibold">
+                    Cambiar estado:
+                    {{ espacioCambiarEstado.nombre }}
+                </h3>
 
-    <div class="space-y-2">
-        <label class="text-sm font-medium">
-            Estado del espacio
-        </label>
+                <div class="space-y-2">
+                    <label class="text-sm font-medium">
+                        Estado del espacio
+                    </label>
 
-        <select
-            v-model="formEstado.estatus"
-            class="w-full rounded-md border bg-background p-2 text-sm"
-        >
-            <option value="disponible">
-                Disponible
-            </option>
+                    <select
+                        v-model="formEstado.estatus"
+                        class="w-full rounded-md border bg-background p-2 text-sm"
+                    >
+                        <option value="disponible">Disponible</option>
 
-            <option value="mantenimiento">
-                Mantenimiento
-            </option>
+                        <option value="mantenimiento">Mantenimiento</option>
 
-            <option value="inactivo">
-                Inactivo
-            </option>
-        </select>
-        <p
-    v-if="formEstado.errors.estatus"
-    class="mt-1 text-sm text-red-600"
->
-    {{ formEstado.errors.estatus }}
-</p>
-    </div>
+                        <option value="inactivo">Inactivo</option>
+                    </select>
+                    <p
+                        v-if="formEstado.errors.estatus"
+                        class="mt-1 text-sm text-red-600"
+                    >
+                        {{ formEstado.errors.estatus }}
+                    </p>
+                </div>
 
+                <div class="flex justify-end gap-2">
+                    <Button variant="outline" @click="espacioEstadoId = null">
+                        Cancelar
+                    </Button>
 
-    <div class="flex justify-end gap-2">
-        <Button
-            variant="outline"
-            @click="espacioEstadoId = null"
-        >
-            Cancelar
-        </Button>
-
-
-<Button
-    type="button"
-    :disabled="!habilitarEscritura || formEstado.processing"
-    @click="guardarEstado"
->
-    {{
-        formEstado.processing
-            ? 'Guardando...'
-            : 'Guardar estado'
-    }}
-</Button>
-
-    </div>
-</div>
+                    <Button
+                        type="button"
+                        :disabled="!habilitarEscritura || formEstado.processing"
+                        @click="guardarEstado"
+                    >
+                        {{
+                            formEstado.processing
+                                ? 'Guardando...'
+                                : 'Guardar estado'
+                        }}
+                    </Button>
+                </div>
+            </div>
 
             <!-- DETALLE DEL ESPACIO SELECCIONADO -->
-            <div
-                v-if="detalleSeleccionado"
-                class="border-t bg-muted/30 p-4"
-            >
+            <div v-if="detalleSeleccionado" class="border-t bg-muted/30 p-4">
                 <div class="mb-3 flex items-center justify-between">
                     <h3 class="font-semibold">
                         Detalles: {{ detalleSeleccionado.nombre }}
@@ -429,22 +381,21 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                     </Button>
                 </div>
 
-<!-- Fotografía del espacio seleccionado -->
-<div
-    v-if="detalleSeleccionado.foto"
-    class="mb-5"
->
-    <img
-        :src="`/storage/${detalleSeleccionado.foto}`"
-        :alt="`Fotografía de ${detalleSeleccionado.nombre}`"
-        class="h-56 w-full max-w-lg rounded-lg border object-cover"
-    />
-</div>
+                <!-- Fotografía del espacio seleccionado -->
+                <div v-if="detalleSeleccionado.foto" class="mb-5">
+                    <img
+                        :src="`/storage/${detalleSeleccionado.foto}`"
+                        :alt="`Fotografía de ${detalleSeleccionado.nombre}`"
+                        class="h-56 w-full max-w-lg rounded-lg border object-cover"
+                    />
+                </div>
 
                 <div class="grid gap-3 text-sm sm:grid-cols-2">
                     <p>
                         <strong>Descripción:</strong>
-                        {{ detalleSeleccionado.descripcion ?? 'Sin descripción' }}
+                        {{
+                            detalleSeleccionado.descripcion ?? 'Sin descripción'
+                        }}
                     </p>
                     <p>
                         <strong>Ubicación:</strong>
@@ -456,11 +407,15 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                     </p>
                     <p>
                         <strong>Mínimo de alumnos:</strong>
-                        {{ detalleSeleccionado.minimo_alumnos ?? 'Sin definir' }}
+                        {{
+                            detalleSeleccionado.minimo_alumnos ?? 'Sin definir'
+                        }}
                     </p>
                     <p>
                         <strong>Máximo de alumnos:</strong>
-                        {{ detalleSeleccionado.maximo_alumnos ?? 'Sin definir' }}
+                        {{
+                            detalleSeleccionado.maximo_alumnos ?? 'Sin definir'
+                        }}
                     </p>
 
                     <p>
@@ -512,15 +467,11 @@ const estilosEstatus: Record<Espacio['estatus'], string> = {
                         </table>
                     </div>
 
-                    <p
-                        v-else
-                        class="text-sm text-muted-foreground"
-                    >
+                    <p v-else class="text-sm text-muted-foreground">
                         Este espacio no tiene requerimientos asignados.
                     </p>
                 </div>
-
             </div>
         </TarjetaSeccion>
-        </PaginaBase>
-        </template>
+    </PaginaBase>
+</template>
