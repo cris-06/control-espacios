@@ -33,6 +33,7 @@ import { index as solicitudes } from '@/routes/solicitudes';
 import type {
     AccionFlujo,
     AdvertenciaRequerimiento,
+    ObservacionVigente,
     ReservaVista,
 } from '@/types';
 
@@ -42,7 +43,39 @@ const props = defineProps<{
     acciones: AccionFlujo[];
     traslapes: string[];
     advertencias: AdvertenciaRequerimiento[];
+    observacionVigente: ObservacionVigente | null;
 }>();
+
+// Título, ícono y color del recuadro según el tipo de la observación vigente.
+const estiloObservacion: Record<
+    ObservacionVigente['tipo'],
+    { titulo: string; icono: Component; clases: string }
+> = {
+    correccion_solicitada: {
+        titulo: 'Corrección solicitada',
+        icono: TriangleAlert,
+        clases: 'border-orange-200 bg-orange-50 text-orange-900',
+    },
+    autorizada: {
+        titulo: 'Reserva autorizada',
+        icono: CircleCheck,
+        clases: 'border-green-200 bg-green-50 text-green-900',
+    },
+    denegada: {
+        titulo: 'Reserva denegada',
+        icono: CircleX,
+        clases: 'border-red-200 bg-red-50 text-red-900',
+    },
+};
+
+// Autor, rol y fecha disponibles (en registros antiguos pueden faltar: no se inventan).
+const autoriaObservacion = computed(() =>
+    props.observacionVigente
+        ? [props.observacionVigente.autor, props.observacionVigente.rol]
+              .filter(Boolean)
+              .join(' · ')
+        : '',
+);
 
 // Bloques con requerimientos que el catálogo ya no respalda (para marcarlos en la lista).
 const bloquesConAdvertencia = computed(
@@ -249,13 +282,43 @@ const varianteBoton = (accion: AccionFlujo) =>
         </div>
 
         <div
-            v-if="reserva.observaciones_admin"
-            class="rounded-md border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900"
+            v-if="observacionVigente"
+            class="flex gap-3 rounded-md border p-4 text-sm"
+            :class="estiloObservacion[observacionVigente.tipo].clases"
         >
-            <p class="font-medium">Última observación</p>
-            <p class="mt-1 whitespace-pre-line">
-                {{ reserva.observaciones_admin }}
-            </p>
+            <component
+                :is="estiloObservacion[observacionVigente.tipo].icono"
+                class="mt-0.5 size-4 shrink-0"
+            />
+            <div class="min-w-0 flex-1">
+                <div
+                    class="flex flex-wrap items-baseline justify-between gap-x-3"
+                >
+                    <p class="font-medium">
+                        {{ estiloObservacion[observacionVigente.tipo].titulo }}
+                    </p>
+                    <time
+                        v-if="observacionVigente.fecha"
+                        :datetime="observacionVigente.fecha"
+                        class="text-xs opacity-80"
+                        >{{
+                            formatearFechaHora(observacionVigente.fecha)
+                        }}</time
+                    >
+                </div>
+                <p v-if="autoriaObservacion" class="text-xs opacity-80">
+                    {{ autoriaObservacion }}
+                </p>
+                <p
+                    v-if="observacionVigente.comentario?.trim()"
+                    class="mt-1 whitespace-pre-line"
+                >
+                    {{ observacionVigente.comentario }}
+                </p>
+                <p v-else class="mt-1 italic opacity-70">
+                    Sin observaciones adicionales.
+                </p>
+            </div>
         </div>
 
         <TarjetaSeccion titulo="Datos generales">

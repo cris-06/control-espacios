@@ -188,6 +188,16 @@ export type AdvertenciaRequerimiento = {
     mensaje: string;
 };
 
+// Corrección o decisión vigente según el estado actual (autor, rol y fecha pueden faltar
+// en registros antiguos sin historial).
+export type ObservacionVigente = {
+    tipo: 'correccion_solicitada' | 'autorizada' | 'denegada';
+    comentario: string | null;
+    autor: string | null;
+    rol: string | null;
+    fecha: string | null;
+};
+
 export type RegistroHistorial = {
     id: number;
     accion: string;
