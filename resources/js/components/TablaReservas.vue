@@ -18,7 +18,9 @@ const props = defineProps<{
 const columnas = computed(() => [
     { clave: 'folio', titulo: 'Folio' },
     { clave: 'actividad', titulo: 'Actividad' },
-    ...(props.mostrarDocente ? [{ clave: 'docente', titulo: 'Solicitante' }] : []),
+    ...(props.mostrarDocente
+        ? [{ clave: 'docente', titulo: 'Solicitante' }]
+        : []),
     { clave: 'licenciatura', titulo: 'Licenciatura' },
     { clave: 'espacio', titulo: 'Espacio' },
     { clave: 'fecha', titulo: 'Fecha' },

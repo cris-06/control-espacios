@@ -46,7 +46,9 @@ const estadoId = ref(
 );
 
 const licenciaturaId = ref(
-    props.filtros.licenciatura_id ? String(props.filtros.licenciatura_id) : null,
+    props.filtros.licenciatura_id
+        ? String(props.filtros.licenciatura_id)
+        : null,
 );
 
 // «Mis borradores» usa el filtro de estado existente (estados_reserva.id = 1, borrador).

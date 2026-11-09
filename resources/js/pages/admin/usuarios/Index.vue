@@ -79,7 +79,9 @@ watchDebounced(buscar, filtrar, { debounce: 350 });
 watch([rolId, estatusFiltro], filtrar);
 
 const conteo = computed(() =>
-    props.usuarios.total === 1 ? '1 usuario' : `${props.usuarios.total} usuarios`,
+    props.usuarios.total === 1
+        ? '1 usuario'
+        : `${props.usuarios.total} usuarios`,
 );
 
 const nombreRol = (nombre: string) =>
@@ -139,7 +141,12 @@ const restablecerPassword = (usuario: UsuarioFila) => {
                         <CampoSelect
                             id="rol"
                             v-model="rolId"
-                            :opciones="roles.map((r) => ({ ...r, nombre: nombreRol(r.nombre) }))"
+                            :opciones="
+                                roles.map((r) => ({
+                                    ...r,
+                                    nombre: nombreRol(r.nombre),
+                                }))
+                            "
                             vacio="Todos los roles"
                         />
                     </CampoFormulario>
@@ -221,7 +228,11 @@ const restablecerPassword = (usuario: UsuarioFila) => {
                             @click="cambiarEstatus(fila)"
                         >
                             <Power class="size-4" />
-                            {{ fila.estatus === 'activo' ? 'Inactivar' : 'Activar' }}
+                            {{
+                                fila.estatus === 'activo'
+                                    ? 'Inactivar'
+                                    : 'Activar'
+                            }}
                         </Button>
                         <Button
                             v-if="fila.puede.restablecerPassword"

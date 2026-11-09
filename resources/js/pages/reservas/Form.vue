@@ -90,16 +90,14 @@ const form = useForm({
         | number
         | '',
     fecha_entrega_formato: props.reserva?.fecha_entrega_formato ?? '',
-    detalles: (props.reserva?.detalles ?? []).map(
-        (d): DetalleEditable => ({
-            ...d,
-            espacio_id: aTexto(d.espacio_id),
-            cantidad_alumnos: d.cantidad_alumnos ?? '',
-            lugar_especifico: d.lugar_especifico ?? '',
-            docente_responsable_id: aTexto(d.docente_responsable_id),
-            requerimientos: d.requerimientos.map((r) => ({ ...r })),
-        }),
-    ),
+    detalles: (props.reserva?.detalles ?? []).map((d): DetalleEditable => ({
+        ...d,
+        espacio_id: aTexto(d.espacio_id),
+        cantidad_alumnos: d.cantidad_alumnos ?? '',
+        lugar_especifico: d.lugar_especifico ?? '',
+        docente_responsable_id: aTexto(d.docente_responsable_id),
+        requerimientos: d.requerimientos.map((r) => ({ ...r })),
+    })),
     enviar: false,
 });
 
@@ -214,8 +212,8 @@ const textarea =
             v-else-if="opciones.actividades.length === 0"
             class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
         >
-            Aún no hay tipos de actividad registrados. Pide al administrador
-            que los dé de alta.
+            Aún no hay tipos de actividad registrados. Pide al administrador que
+            los dé de alta.
         </div>
 
         <form class="grid gap-6" @submit.prevent="guardar()">

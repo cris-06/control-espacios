@@ -153,7 +153,11 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                             @click="cambiarEstatus(fila)"
                         >
                             <Power class="size-4" />
-                            {{ fila.estatus === 'activa' ? 'Inactivar' : 'Activar' }}
+                            {{
+                                fila.estatus === 'activa'
+                                    ? 'Inactivar'
+                                    : 'Activar'
+                            }}
                         </Button>
                     </div>
                 </template>

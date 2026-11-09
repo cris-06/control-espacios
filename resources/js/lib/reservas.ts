@@ -54,7 +54,9 @@ export function sinVacios(
     );
 }
 
-const formatoRelativo = new Intl.RelativeTimeFormat('es-MX', { numeric: 'auto' });
+const formatoRelativo = new Intl.RelativeTimeFormat('es-MX', {
+    numeric: 'auto',
+});
 const formatoFechaHora = new Intl.DateTimeFormat('es-MX', {
     dateStyle: 'medium',
     timeStyle: 'short',

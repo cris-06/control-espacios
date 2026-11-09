@@ -26,7 +26,11 @@ defineProps<{
 
     <Form
         v-bind="CambiarPasswordController.update.form()"
-        :reset-on-error="['password', 'password_confirmation', 'current_password']"
+        :reset-on-error="[
+            'password',
+            'password_confirmation',
+            'current_password',
+        ]"
         class="flex flex-col gap-6"
         v-slot="{ errors, processing }"
     >
@@ -57,7 +61,9 @@ defineProps<{
         </div>
 
         <div class="grid gap-2">
-            <Label for="password_confirmation">Confirma la nueva contraseña</Label>
+            <Label for="password_confirmation"
+                >Confirma la nueva contraseña</Label
+            >
             <PasswordInput
                 id="password_confirmation"
                 name="password_confirmation"

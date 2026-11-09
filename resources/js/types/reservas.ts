@@ -29,7 +29,12 @@ export type Reserva = {
 // mientras la reserva no tenga detalles (borrador incompleto).
 export type ReservaFila = Omit<
     Reserva,
-    'espacio_id' | 'espacio' | 'fecha' | 'hora_inicio' | 'hora_fin' | 'cantidad_alumnos'
+    | 'espacio_id'
+    | 'espacio'
+    | 'fecha'
+    | 'hora_inicio'
+    | 'hora_fin'
+    | 'cantidad_alumnos'
 > & {
     espacio_id: number | null;
     espacio: string | null;
@@ -156,13 +161,21 @@ export type OpcionesReserva = {
     licenciaturas: Opcion[];
     actividades: Opcion[];
     cuatrimestres: Opcion[];
-    asignaturas: (Opcion & { licenciatura_id: number; cuatrimestre_id: number })[];
+    asignaturas: (Opcion & {
+        licenciatura_id: number;
+        cuatrimestre_id: number;
+    })[];
     espacios: EspacioOpcion[];
     docentes: DocenteOpcion[];
 };
 
 export type AccionFlujo = {
-    accion: 'enviar' | 'aprobar' | 'solicitar_correccion' | 'autorizar' | 'denegar';
+    accion:
+        | 'enviar'
+        | 'aprobar'
+        | 'solicitar_correccion'
+        | 'autorizar'
+        | 'denegar';
     etiqueta: string;
     destino: number;
     requiereObservacion: boolean;
@@ -177,8 +190,17 @@ export type RegistroHistorial = {
 };
 
 export type ReservaDetalleVista = DetalleFormulario & {
-    espacio: { nombre: string; ubicacion: string | null; capacidad: number | null };
-    estado_detalle: 'pendiente' | 'autorizada' | 'denegada' | 'cancelada' | null;
+    espacio: {
+        nombre: string;
+        ubicacion: string | null;
+        capacidad: number | null;
+    };
+    estado_detalle:
+        | 'pendiente'
+        | 'autorizada'
+        | 'denegada'
+        | 'cancelada'
+        | null;
     docente_responsable: string | null;
     requerimientos_vista: { nombre: string; cantidad: number }[];
 };
@@ -202,7 +224,9 @@ export type Notificacion = {
     id: number;
     titulo: string;
     mensaje: string;
-    tipo: 'info' | 'success' | 'warning' | 'error' | string;
+    // Valores habituales: 'info' | 'success' | 'warning' | 'error'. Se admite cualquier
+    // texto (la unión anterior con `string` ya equivalía a `string`).
+    tipo: string;
     leida: boolean;
     reserva_id: number | null;
     fecha: string | null;

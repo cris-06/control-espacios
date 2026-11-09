@@ -66,13 +66,41 @@ const ambar = 'border-amber-200 bg-amber-50 text-amber-700';
 // Cada valor del ENUM historial_reservas.accion.
 const pasos: Record<string, Paso> = {
     creada: { etiqueta: 'Creada', icono: FilePlus, color: gris },
-    enviada_coordinador: { etiqueta: 'Enviada a coordinación', icono: Send, color: ambar },
-    editada_coordinador: { etiqueta: 'Editada por coordinación', icono: Pencil, color: 'border-sky-200 bg-sky-50 text-sky-700' },
-    correccion_solicitada: { etiqueta: 'Corrección solicitada', icono: TriangleAlert, color: 'border-orange-200 bg-orange-50 text-orange-700' },
-    aprobada_coordinador: { etiqueta: 'Aprobada por coordinación', icono: CheckCheck, color: ambar },
-    enviada_admin: { etiqueta: 'Enviada a administración', icono: Send, color: ambar },
-    autorizada: { etiqueta: 'Autorizada', icono: CircleCheck, color: 'border-green-200 bg-green-50 text-green-700' },
-    denegada: { etiqueta: 'Denegada', icono: CircleX, color: 'border-red-200 bg-red-50 text-red-700' },
+    enviada_coordinador: {
+        etiqueta: 'Enviada a coordinación',
+        icono: Send,
+        color: ambar,
+    },
+    editada_coordinador: {
+        etiqueta: 'Editada por coordinación',
+        icono: Pencil,
+        color: 'border-sky-200 bg-sky-50 text-sky-700',
+    },
+    correccion_solicitada: {
+        etiqueta: 'Corrección solicitada',
+        icono: TriangleAlert,
+        color: 'border-orange-200 bg-orange-50 text-orange-700',
+    },
+    aprobada_coordinador: {
+        etiqueta: 'Aprobada por coordinación',
+        icono: CheckCheck,
+        color: ambar,
+    },
+    enviada_admin: {
+        etiqueta: 'Enviada a administración',
+        icono: Send,
+        color: ambar,
+    },
+    autorizada: {
+        etiqueta: 'Autorizada',
+        icono: CircleCheck,
+        color: 'border-green-200 bg-green-50 text-green-700',
+    },
+    denegada: {
+        etiqueta: 'Denegada',
+        icono: CircleX,
+        color: 'border-red-200 bg-red-50 text-red-700',
+    },
     cancelada: { etiqueta: 'Cancelada', icono: Ban, color: gris },
 };
 
@@ -263,7 +291,9 @@ const varianteBoton = (accion: AccionFlujo) =>
                     </div>
                     <div
                         class="capitalize"
-                        :class="estiloDetalle[detalle.estado_detalle ?? 'pendiente']"
+                        :class="
+                            estiloDetalle[detalle.estado_detalle ?? 'pendiente']
+                        "
                     >
                         {{ detalle.estado_detalle ?? 'pendiente' }}
                     </div>
@@ -335,9 +365,14 @@ const varianteBoton = (accion: AccionFlujo) =>
                         />
                     </span>
                     <div class="min-w-0 flex-1 pt-1 text-sm">
-                        <div class="flex flex-wrap items-baseline justify-between gap-x-3">
+                        <div
+                            class="flex flex-wrap items-baseline justify-between gap-x-3"
+                        >
                             <span class="font-medium">
-                                {{ (pasos[registro.accion] ?? pasoGenerico).etiqueta || registro.accion }}
+                                {{
+                                    (pasos[registro.accion] ?? pasoGenerico)
+                                        .etiqueta || registro.accion
+                                }}
                             </span>
                             <time
                                 v-if="registro.fecha"
@@ -346,7 +381,9 @@ const varianteBoton = (accion: AccionFlujo) =>
                                 >{{ formatearFechaHora(registro.fecha) }}</time
                             >
                         </div>
-                        <p class="text-muted-foreground">{{ registro.usuario }}</p>
+                        <p class="text-muted-foreground">
+                            {{ registro.usuario }}
+                        </p>
                         <p
                             v-if="registro.comentario"
                             class="mt-1 rounded-md bg-muted px-3 py-2 whitespace-pre-line"

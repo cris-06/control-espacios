@@ -21,15 +21,13 @@ const props = defineProps<{
 
 const page = usePage();
 
-const habilitarEscritura = computed(
-    () => Boolean(page.props.auth.permisos.administrar)
+const habilitarEscritura = computed(() =>
+    Boolean(page.props.auth.permisos.administrar),
 );
 
 // Mostrar únicamente los requerimientos activos
 const requerimientosActivos = computed(() =>
-    props.requerimientos.filter(
-        (item) => item.estatus === 'activo'
-    )
+    props.requerimientos.filter((item) => item.estatus === 'activo'),
 );
 
 // Columnas de la tabla
@@ -64,18 +62,15 @@ const eliminarRequerimiento = (item: Requerimiento) => {
         return;
     }
 
-    if (!window.confirm(
-        `¿Deseas eliminar el requerimiento "${item.nombre}"?`
-    )) {
+    if (
+        !window.confirm(`¿Deseas eliminar el requerimiento "${item.nombre}"?`)
+    ) {
         return;
     }
 
-    formEliminar.patch(
-        `/requerimientos/${item.id}/estatus`,
-        {
-            preserveScroll: true,
-        }
-    );
+    formEliminar.patch(`/requerimientos/${item.id}/estatus`, {
+        preserveScroll: true,
+    });
 };
 </script>
 
@@ -88,15 +83,9 @@ const eliminarRequerimiento = (item: Requerimiento) => {
     >
         <TarjetaSeccion titulo="Administración de requerimientos">
             <div class="space-y-5 p-4">
-
                 <!-- AGREGAR REQUERIMIENTO -->
-                <form
-                    class="space-y-3"
-                    @submit.prevent="guardarRequerimiento"
-                >
-                    <h3 class="text-sm font-semibold">
-                        Agregar requerimiento
-                    </h3>
+                <form class="space-y-3" @submit.prevent="guardarRequerimiento">
+                    <h3 class="text-sm font-semibold">Agregar requerimiento</h3>
 
                     <label
                         for="nuevo-requerimiento"
@@ -125,10 +114,16 @@ const eliminarRequerimiento = (item: Requerimiento) => {
 
                         <Button
                             type="submit"
-                            :disabled="!habilitarEscritura || formNuevo.processing"
+                            :disabled="
+                                !habilitarEscritura || formNuevo.processing
+                            "
                         >
                             <Plus class="mr-1 size-4" />
-                            {{ formNuevo.processing ? 'Guardando...' : 'Agregar' }}
+                            {{
+                                formNuevo.processing
+                                    ? 'Guardando...'
+                                    : 'Agregar'
+                            }}
                         </Button>
                     </div>
                 </form>
@@ -156,7 +151,10 @@ const eliminarRequerimiento = (item: Requerimiento) => {
                                     type="button"
                                     variant="destructive"
                                     size="sm"
-                                    :disabled="!habilitarEscritura || formEliminar.processing"
+                                    :disabled="
+                                        !habilitarEscritura ||
+                                        formEliminar.processing
+                                    "
                                     @click="eliminarRequerimiento(fila)"
                                 >
                                     <Trash2 class="mr-1 size-4" />
@@ -166,7 +164,6 @@ const eliminarRequerimiento = (item: Requerimiento) => {
                         </TablaDatos>
                     </div>
                 </div>
-
             </div>
         </TarjetaSeccion>
     </PaginaBase>

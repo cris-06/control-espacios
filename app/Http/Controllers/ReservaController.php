@@ -93,7 +93,7 @@ class ReservaController extends Controller
                 'cuatrimestre' => $reserva->cuatrimestre?->nombre,
                 'asignatura' => $reserva->asignatura?->nombre,
                 'observaciones_admin' => $reserva->observaciones_admin,
-                'detalles' => $reserva->detalles->map(fn(ReservaDetalle $detalle): array => [
+                'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => [
                     ...$this->datosDetalle($detalle),
                     'espacio' => $detalle->espacio->only(['nombre', 'ubicacion', 'capacidad']),
                     'estado_detalle' => $detalle->estado_detalle,
@@ -103,7 +103,7 @@ class ReservaController extends Controller
                         'cantidad' => $pedido->cantidad,
                     ])->values(),
                 ]),
-                'historial' => $reserva->historial->map(fn(HistorialReserva $registro): array => [
+                'historial' => $reserva->historial->map(fn (HistorialReserva $registro): array => [
                     'id' => $registro->id,
                     'accion' => $registro->accion,
                     'comentario' => $registro->comentario,
@@ -132,7 +132,7 @@ class ReservaController extends Controller
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
-                'detalles' => $reserva->detalles->map(fn(ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
+                'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
             ],
             'opciones' => $this->opciones($request->user()),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
@@ -263,7 +263,7 @@ class ReservaController extends Controller
         );
 
         return [
-            'licenciaturas' => $licenciaturas->map(fn($l) => ['id' => $l->id, 'nombre' => $l->nombre]),
+            'licenciaturas' => $licenciaturas->map(fn ($l) => ['id' => $l->id, 'nombre' => $l->nombre]),
             'actividades' => Actividad::query()->where('estatus', 'activa')->orderBy('nombre')->get(['id', 'nombre']),
             'cuatrimestres' => Cuatrimestre::query()->orderBy('numero')->get(['id', 'nombre']),
             'asignaturas' => Asignatura::query()

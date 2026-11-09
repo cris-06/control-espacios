@@ -44,7 +44,9 @@ const abrir = (notificacion: Notificacion) =>
         <template v-if="hayNoLeidas" #acciones>
             <Button
                 variant="outline"
-                @click="router.post(leerTodas.url(), {}, { preserveScroll: true })"
+                @click="
+                    router.post(leerTodas.url(), {}, { preserveScroll: true })
+                "
             >
                 <CheckCheck class="size-4" />
                 Marcar todas como leídas
@@ -62,7 +64,10 @@ const abrir = (notificacion: Notificacion) =>
                 No tienes notificaciones.
             </p>
             <ul v-else class="divide-y divide-border">
-                <li v-for="notificacion in notificaciones.data" :key="notificacion.id">
+                <li
+                    v-for="notificacion in notificaciones.data"
+                    :key="notificacion.id"
+                >
                     <button
                         type="button"
                         class="flex w-full flex-col gap-1 border-l-4 px-4 py-3 text-left transition-colors hover:bg-muted"
@@ -72,16 +77,30 @@ const abrir = (notificacion: Notificacion) =>
                         ]"
                         @click="abrir(notificacion)"
                     >
-                        <span class="flex flex-wrap items-center justify-between gap-2">
-                            <span :class="notificacion.leida ? '' : 'font-semibold'">
+                        <span
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <span
+                                :class="
+                                    notificacion.leida ? '' : 'font-semibold'
+                                "
+                            >
                                 {{ notificacion.titulo }}
                             </span>
                             <span class="text-xs text-muted-foreground">
-                                <template v-if="!notificacion.leida">Sin leer · </template>
-                                {{ notificacion.fecha ? formatearFechaHora(notificacion.fecha) : '' }}
+                                <template v-if="!notificacion.leida"
+                                    >Sin leer ·
+                                </template>
+                                {{
+                                    notificacion.fecha
+                                        ? formatearFechaHora(notificacion.fecha)
+                                        : ''
+                                }}
                             </span>
                         </span>
-                        <span class="text-sm whitespace-pre-line text-muted-foreground">
+                        <span
+                            class="text-sm whitespace-pre-line text-muted-foreground"
+                        >
                             {{ notificacion.mensaje }}
                         </span>
                     </button>
@@ -101,7 +120,9 @@ const abrir = (notificacion: Notificacion) =>
                             size="sm"
                             as-child
                         >
-                            <Link :href="notificaciones.prev_page_url">Anterior</Link>
+                            <Link :href="notificaciones.prev_page_url"
+                                >Anterior</Link
+                            >
                         </Button>
                         <Button
                             v-if="notificaciones.next_page_url"
@@ -109,7 +130,9 @@ const abrir = (notificacion: Notificacion) =>
                             size="sm"
                             as-child
                         >
-                            <Link :href="notificaciones.next_page_url">Siguiente</Link>
+                            <Link :href="notificaciones.next_page_url"
+                                >Siguiente</Link
+                            >
                         </Button>
                     </div>
                 </div>

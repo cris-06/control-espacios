@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Database\Factories\EspacioFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -9,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Espacio extends Model
 {
+    /** @use HasFactory<EspacioFactory> */
     use HasFactory;
 
     protected $table = 'espacios';
@@ -42,7 +44,11 @@ class Espacio extends Model
         'fecha_creacion' => 'datetime',
     ];
 
-    // Relación con los requerimientos asignados
+    /**
+     * Relación con los requerimientos asignados
+     *
+     * @return BelongsToMany<Requerimiento, $this>
+     */
     public function requerimientos(): BelongsToMany
     {
         return $this->belongsToMany(
@@ -53,7 +59,11 @@ class Espacio extends Model
         )->withPivot('id', 'cantidad_disponible');
     }
 
-    // Relación con los detalles de las reservas
+    /**
+     * Relación con los detalles de las reservas
+     *
+     * @return HasMany<ReservaDetalle, $this>
+     */
     public function detalles(): HasMany
     {
         return $this->hasMany(

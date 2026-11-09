@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use Database\Factories\ActividadFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class Actividad extends Model
 {
+    /** @use HasFactory<ActividadFactory> */
     use HasFactory;
 
     protected $table = 'actividades';

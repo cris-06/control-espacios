@@ -21,15 +21,13 @@ const props = defineProps<{
 
 const page = usePage();
 
-const habilitarEscritura = computed(
-    () => Boolean(page.props.auth.permisos.administrar)
+const habilitarEscritura = computed(() =>
+    Boolean(page.props.auth.permisos.administrar),
 );
 
 // Mostrar únicamente las actividades activas
 const actividadesActivas = computed(() =>
-    props.actividades.filter(
-        (item) => item.estatus === 'activa'
-    )
+    props.actividades.filter((item) => item.estatus === 'activa'),
 );
 
 // Columnas
@@ -64,18 +62,13 @@ const eliminarActividad = (item: Actividad) => {
         return;
     }
 
-    if (!window.confirm(
-        `¿Deseas eliminar la actividad "${item.nombre}"?`
-    )) {
+    if (!window.confirm(`¿Deseas eliminar la actividad "${item.nombre}"?`)) {
         return;
     }
 
-    formEliminar.patch(
-        `/actividades/${item.id}/estatus`,
-        {
-            preserveScroll: true,
-        }
-    );
+    formEliminar.patch(`/actividades/${item.id}/estatus`, {
+        preserveScroll: true,
+    });
 };
 </script>
 
@@ -88,15 +81,9 @@ const eliminarActividad = (item: Actividad) => {
     >
         <TarjetaSeccion titulo="Administración de actividades">
             <div class="space-y-5 p-4">
-
                 <!-- AGREGAR ACTIVIDAD -->
-                <form
-                    class="space-y-3"
-                    @submit.prevent="guardarActividad"
-                >
-                    <h3 class="text-sm font-semibold">
-                        Agregar actividad
-                    </h3>
+                <form class="space-y-3" @submit.prevent="guardarActividad">
+                    <h3 class="text-sm font-semibold">Agregar actividad</h3>
 
                     <label
                         for="nueva-actividad"
@@ -125,10 +112,16 @@ const eliminarActividad = (item: Actividad) => {
 
                         <Button
                             type="submit"
-                            :disabled="!habilitarEscritura || formNuevo.processing"
+                            :disabled="
+                                !habilitarEscritura || formNuevo.processing
+                            "
                         >
                             <Plus class="mr-1 size-4" />
-                            {{ formNuevo.processing ? 'Guardando...' : 'Agregar' }}
+                            {{
+                                formNuevo.processing
+                                    ? 'Guardando...'
+                                    : 'Agregar'
+                            }}
                         </Button>
                     </div>
                 </form>
@@ -156,7 +149,10 @@ const eliminarActividad = (item: Actividad) => {
                                     type="button"
                                     variant="destructive"
                                     size="sm"
-                                    :disabled="!habilitarEscritura || formEliminar.processing"
+                                    :disabled="
+                                        !habilitarEscritura ||
+                                        formEliminar.processing
+                                    "
                                     @click="eliminarActividad(fila)"
                                 >
                                     <Trash2 class="mr-1 size-4" />
@@ -166,7 +162,6 @@ const eliminarActividad = (item: Actividad) => {
                         </TablaDatos>
                     </div>
                 </div>
-
             </div>
         </TarjetaSeccion>
     </PaginaBase>
