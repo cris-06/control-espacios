@@ -132,7 +132,7 @@ class ReservaWorkflowService
                     );
                 }
 
-                $traslapes = $this->traslapes($actual);
+                $traslapes = $this->traslapes($actual, $usuario);
 
                 if ($traslapes !== [] && $transicion['traslapes'] === 'bloquear') {
                     throw $this->errores($traslapes);
@@ -348,9 +348,14 @@ class ReservaWorkflowService
     /**
      * Choques con reservas YA autorizadas en el mismo espacio, fecha y horario.
      *
+     * La detección (choques() con bloqueo, uno por bloque) no depende de quién consulta:
+     * hay exactamente un mensaje por choque. Solo el texto se adapta a $usuario: el folio
+     * de la otra reserva aparece únicamente si puede verla (describir()); si no, se dice
+     * "otra reserva autorizada", con su horario y nada más.
+     *
      * @return list<string>
      */
-    public function traslapes(Reserva $reserva): array
+    public function traslapes(Reserva $reserva, User $usuario): array
     {
         $mensajes = [];
 
@@ -364,16 +369,16 @@ class ReservaWorkflowService
                 bloquear: true,
             );
 
-            foreach ($choques as $choque) {
+            foreach ($this->disponibilidad->describir($choques, $usuario) as $choque) {
                 $mensajes[] = sprintf(
-                    '%s el %s de %s a %s choca con la reserva autorizada %s (%s a %s).',
+                    '%s el %s de %s a %s choca con %s (%s a %s).',
                     $detalle->espacio->nombre ?? 'El espacio',
                     $detalle->fecha->format('d/m/Y'),
                     ReservaDetalle::hhmm($detalle->hora_inicio),
                     ReservaDetalle::hhmm($detalle->hora_fin),
-                    $choque->reserva->folio ?? Reserva::folioPara($choque->reserva_id),
-                    ReservaDetalle::hhmm($choque->hora_inicio),
-                    ReservaDetalle::hhmm($choque->hora_fin),
+                    $choque['folio'] !== null ? "la reserva autorizada {$choque['folio']}" : 'otra reserva autorizada',
+                    $choque['hora_inicio'],
+                    $choque['hora_fin'],
                 );
             }
         }

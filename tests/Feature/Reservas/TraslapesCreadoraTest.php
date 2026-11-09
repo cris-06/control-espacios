@@ -146,7 +146,7 @@ test('the creator gets no clash notice once the request is decided', function (i
 test('the coordinator reviewing and administration authorizing keep their current messages', function (string $quien, int $estado) {
     ($this->autorizada)($this->docente, $this->licenciatura);
     $reserva = ($this->solicitud)($estado);
-    $esperado = app(W::class)->traslapes($reserva);
+    $esperado = app(W::class)->traslapes($reserva, $this->{$quien});
 
     expect($esperado)->toHaveCount(1)
         ->and(($this->pagina)($reserva, $this->{$quien})['traslapes'])->toBe($esperado);

@@ -123,7 +123,7 @@ class ReservaController extends Controller
             'acciones' => $acciones,
             // Al decidir, administración ve de antemano los choques que bloquearían la autorización.
             'traslapes' => match (true) {
-                $user->can('autorizar', $reserva) || $user->can('revisar', $reserva) => $this->workflow->traslapes($reserva),
+                $user->can('autorizar', $reserva) || $user->can('revisar', $reserva) => $this->workflow->traslapes($reserva, $user),
                 // La creadora ve los choques de su solicitud mientras sigue en curso, sin folios ni datos de reservas ajenas.
                 $reserva->usuario_creador_id === $user->id && $reserva->enEstado(
                     EstadoReserva::BORRADOR,
