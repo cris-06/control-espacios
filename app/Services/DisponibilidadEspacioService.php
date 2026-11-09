@@ -112,14 +112,23 @@ class DisponibilidadEspacioService
             ->pluck('id')
             ->flip();
 
-        return $choques->map(fn (ReservaDetalle $choque): array => [
-            'hora_inicio' => ReservaDetalle::hhmm($choque->hora_inicio),
-            'hora_fin' => ReservaDetalle::hhmm($choque->hora_fin),
-            'estado' => (int) $choque->getAttribute('reserva_estado_id') === E::AUTORIZADA ? 'autorizada' : 'pendiente',
-            'folio' => $visibles->has($choque->reserva_id)
-                ? ($choque->reserva->folio ?? Reserva::folioPara($choque->reserva_id))
-                : null,
-        ])->values()->all();
+        $descritos = [];
+
+        foreach ($choques as $choque) {
+            // reserva_estado_id viene del JOIN de choques() (la fila leída, no la relación).
+            $autorizada = (int) $choque->getAttribute('reserva_estado_id') === E::AUTORIZADA;
+
+            $descritos[] = [
+                'hora_inicio' => ReservaDetalle::hhmm($choque->hora_inicio),
+                'hora_fin' => ReservaDetalle::hhmm($choque->hora_fin),
+                'estado' => $autorizada ? 'autorizada' : 'pendiente',
+                'folio' => $visibles->has($choque->reserva_id)
+                    ? ($choque->reserva->folio ?? Reserva::folioPara($choque->reserva_id))
+                    : null,
+            ];
+        }
+
+        return $descritos;
     }
 
     /**
@@ -133,12 +142,12 @@ class DisponibilidadEspacioService
         $detalles = $reserva->detalles()->with('espacio:id,nombre')->get()->values();
         $avisos = [];
 
-        $bloques = $detalles->map(fn (ReservaDetalle $d): array => [
+        $bloques = array_values($detalles->map(fn (ReservaDetalle $d): array => [
             'espacio_id' => $d->espacio_id,
             'fecha' => $d->fecha->toDateString(),
             'hora_inicio' => $d->hora_inicio,
             'hora_fin' => $d->hora_fin,
-        ])->all();
+        ])->all());
 
         foreach ($this->traslapesInternos($bloques) as [$i, $j]) {
             $avisos[] = sprintf('Espacio %d y espacio %d se traslapan en el mismo espacio y horario.', $i + 1, $j + 1);

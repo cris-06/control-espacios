@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -82,6 +83,17 @@ class ReservaDetalle extends Model
     {
         return $this->belongsToMany(Requerimiento::class, 'reserva_detalle_requerimientos', 'reserva_detalle_id', 'requerimiento_id')
             ->withPivot('id', 'cantidad');
+    }
+
+    /**
+     * Las mismas filas de reserva_detalle_requerimientos como modelo propio, para leer
+     * la cantidad pedida con tipos declarados (la escritura usa requerimientos()->sync()).
+     *
+     * @return HasMany<ReservaDetalleRequerimiento, $this>
+     */
+    public function requerimientosPedidos(): HasMany
+    {
+        return $this->hasMany(ReservaDetalleRequerimiento::class, 'reserva_detalle_id')->orderBy('id');
     }
 
     /**

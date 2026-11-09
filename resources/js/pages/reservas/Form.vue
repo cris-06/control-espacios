@@ -50,9 +50,7 @@ const aTexto = (valor: number | null | undefined) =>
 const responsablePorOmision = (): string | null => {
     const id = page.props.auth.user.id;
 
-    return props.opciones.docentes.some((d) => d.id === id)
-        ? String(id)
-        : null;
+    return props.opciones.docentes.some((d) => d.id === id) ? String(id) : null;
 };
 
 const detalleVacio = (): DetalleEditable => ({

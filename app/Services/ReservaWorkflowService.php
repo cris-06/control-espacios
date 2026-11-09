@@ -10,6 +10,7 @@ use App\Models\HistorialReserva as H;
 use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
+use App\Models\ReservaDetalleRequerimiento;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -248,7 +249,7 @@ class ReservaWorkflowService
         }
 
         /** @var Collection<int, ReservaDetalle> $detalles */
-        $detalles = $reserva->detalles()->with(['espacio', 'requerimientos'])->get();
+        $detalles = $reserva->detalles()->with(['espacio', 'requerimientosPedidos'])->get();
 
         if ($detalles->isEmpty()) {
             $errores[] = 'Agrega al menos un espacio con fecha y horario.';
@@ -286,10 +287,9 @@ class ReservaWorkflowService
                 }
             }
 
-            $pedidos = $detalle->requerimientos
-                ->map(fn ($r): array => ['requerimiento_id' => (int) $r->id, 'cantidad' => (int) $r->pivot->cantidad])
-                ->values()
-                ->all();
+            $pedidos = array_values($detalle->requerimientosPedidos
+                ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
+                ->all());
 
             foreach ($this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos) as $mensaje) {
                 $errores[] = "$n: ".mb_lcfirst($mensaje);

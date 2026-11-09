@@ -10,8 +10,10 @@ use App\Models\Cuatrimestre;
 use App\Models\Espacio;
 use App\Models\EstadoReserva;
 use App\Models\HistorialReserva;
+use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
+use App\Models\ReservaDetalleRequerimiento;
 use App\Models\Rol;
 use App\Models\User;
 use App\Services\DisponibilidadEspacioService;
@@ -20,6 +22,7 @@ use App\Services\ReservaWorkflowService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -74,7 +77,7 @@ class ReservaController extends Controller
             'estado:id,nombre,descripcion',
             'detalles.espacio:id,nombre,ubicacion,capacidad',
             'detalles.docenteResponsable:id,nombre,apellido_paterno,apellido_materno',
-            'detalles.requerimientos:requerimientos.id,requerimientos.nombre',
+            'detalles.requerimientosPedidos.requerimiento:id,nombre',
             'historial.usuario:id,nombre,apellido_paterno,apellido_materno',
         ]);
 
@@ -95,9 +98,9 @@ class ReservaController extends Controller
                     'espacio' => $detalle->espacio->only(['nombre', 'ubicacion', 'capacidad']),
                     'estado_detalle' => $detalle->estado_detalle,
                     'docente_responsable' => $detalle->docenteResponsable?->name,
-                    'requerimientos_vista' => $detalle->requerimientos->map(fn ($r): array => [
-                        'nombre' => $r->nombre,
-                        'cantidad' => (int) $r->pivot->cantidad,
+                    'requerimientos_vista' => $detalle->requerimientosPedidos->map(fn (ReservaDetalleRequerimiento $pedido): array => [
+                        'nombre' => $pedido->requerimiento->nombre,
+                        'cantidad' => $pedido->cantidad,
                     ])->values(),
                 ]),
                 'historial' => $reserva->historial->map(fn(HistorialReserva $registro): array => [
@@ -123,7 +126,7 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $reserva->load('detalles.requerimientos:requerimientos.id');
+        $reserva->load('detalles.requerimientosPedidos');
 
         return Inertia::render('reservas/Form', [
             'reserva' => [
@@ -234,9 +237,9 @@ class ReservaController extends Controller
             'material_requerido' => $detalle->material_requerido,
             'observaciones' => $detalle->observaciones,
             'docente_responsable_id' => $detalle->docente_responsable_id,
-            'requerimientos' => $detalle->requerimientos->map(fn ($r): array => [
-                'requerimiento_id' => $r->id,
-                'cantidad' => (int) $r->pivot->cantidad,
+            'requerimientos' => $detalle->requerimientosPedidos->map(fn (ReservaDetalleRequerimiento $pedido): array => [
+                'requerimiento_id' => $pedido->requerimiento_id,
+                'cantidad' => $pedido->cantidad,
             ])->values(),
         ];
     }
@@ -249,6 +252,15 @@ class ReservaController extends Controller
     private function opciones(User $user): array
     {
         $licenciaturas = $user->licenciaturas()->where('estatus', 'activa')->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
+        $licenciaturaIds = array_values($licenciaturas->map(fn (Licenciatura $l): int => $l->id)->all());
+
+        $espacios = Espacio::query()
+            ->where('estatus', '!=', 'inactivo')
+            ->orderBy('nombre')
+            ->get(['id', 'nombre', 'ubicacion', 'capacidad', 'minimo_alumnos', 'maximo_alumnos', 'estatus']);
+        $requerimientosPorEspacio = $this->requerimientosActivosPorEspacio(
+            array_values($espacios->map(fn (Espacio $e): int => $e->id)->all()),
+        );
 
         return [
             'licenciaturas' => $licenciaturas->map(fn($l) => ['id' => $l->id, 'nombre' => $l->nombre]),
@@ -259,21 +271,45 @@ class ReservaController extends Controller
                 ->where('estatus', 'activa')
                 ->orderBy('nombre')
                 ->get(['id', 'nombre', 'licenciatura_id', 'cuatrimestre_id']),
-            'espacios' => Espacio::query()
-                ->where('estatus', '!=', 'inactivo')
-                ->with(['requerimientos' => fn ($q) => $q->where('requerimientos.estatus', 'activo')->orderBy('requerimientos.nombre')])
-                ->orderBy('nombre')
-                ->get(['id', 'nombre', 'ubicacion', 'capacidad', 'minimo_alumnos', 'maximo_alumnos', 'estatus'])
-                ->map(fn (Espacio $e): array => [
-                    ...$e->only(['id', 'nombre', 'ubicacion', 'capacidad', 'minimo_alumnos', 'maximo_alumnos', 'estatus']),
-                    'requerimientos' => $e->requerimientos->map(fn ($r): array => [
-                        'id' => $r->id,
-                        'nombre' => $r->nombre,
-                        'cantidad_disponible' => (int) $r->pivot->cantidad_disponible,
-                    ])->values(),
-                ]),
-            'docentes' => $this->docentesResponsables($licenciaturas->pluck('id')->all()),
+            'espacios' => $espacios->map(fn (Espacio $e): array => [
+                ...$e->only(['id', 'nombre', 'ubicacion', 'capacidad', 'minimo_alumnos', 'maximo_alumnos', 'estatus']),
+                'requerimientos' => $requerimientosPorEspacio[$e->id] ?? [],
+            ]),
+            'docentes' => $this->docentesResponsables($licenciaturaIds),
         ];
+    }
+
+    /**
+     * Requerimientos activos de cada espacio con su cantidad disponible
+     * (espacio_requerimientos), ordenados por nombre. Una sola consulta.
+     *
+     * @param  list<int>  $espacioIds
+     * @return array<int, list<array{id: int, nombre: string, cantidad_disponible: int}>>
+     */
+    private function requerimientosActivosPorEspacio(array $espacioIds): array
+    {
+        if ($espacioIds === []) {
+            return [];
+        }
+
+        $filas = DB::table('espacio_requerimientos as er')
+            ->join('requerimientos as r', 'r.id', '=', 'er.requerimiento_id')
+            ->whereIn('er.espacio_id', $espacioIds)
+            ->where('r.estatus', 'activo')
+            ->orderBy('r.nombre')
+            ->get(['er.espacio_id', 'r.id', 'r.nombre', 'er.cantidad_disponible']);
+
+        $porEspacio = [];
+
+        foreach ($filas as $fila) {
+            $porEspacio[(int) $fila->espacio_id][] = [
+                'id' => (int) $fila->id,
+                'nombre' => (string) $fila->nombre,
+                'cantidad_disponible' => (int) $fila->cantidad_disponible,
+            ];
+        }
+
+        return $porEspacio;
     }
 
     /**
@@ -289,7 +325,7 @@ class ReservaController extends Controller
             return [];
         }
 
-        return User::query()
+        return array_values(User::query()
             ->where('estatus', 'activo')
             ->whereHas('rol', fn ($q) => $q->whereIn('nombre', [Rol::DOCENTE, Rol::COORDINADOR]))
             ->whereHas('licenciaturas', fn ($q) => $q->whereIn('licenciaturas.id', $licenciaturaIds))
@@ -300,9 +336,8 @@ class ReservaController extends Controller
             ->map(fn (User $u): array => [
                 'id' => $u->id,
                 'nombre' => $u->name,
-                'licenciatura_ids' => $u->licenciaturas->pluck('id')->map(fn ($id): int => (int) $id)->values()->all(),
+                'licenciatura_ids' => array_values($u->licenciaturas->map(fn (Licenciatura $l): int => $l->id)->all()),
             ])
-            ->values()
-            ->all();
+            ->all());
     }
 }

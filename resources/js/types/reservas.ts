@@ -84,7 +84,10 @@ export type DetalleFormulario = {
 // <Input> no aceptan null: los opcionales vacíos van como '' (Laravel los vuelve null).
 export type DetalleEditable = Omit<
     DetalleFormulario,
-    'espacio_id' | 'cantidad_alumnos' | 'lugar_especifico' | 'docente_responsable_id'
+    | 'espacio_id'
+    | 'cantidad_alumnos'
+    | 'lugar_especifico'
+    | 'docente_responsable_id'
 > & {
     espacio_id: string | null;
     cantidad_alumnos: number | '';
