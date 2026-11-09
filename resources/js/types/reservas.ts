@@ -181,6 +181,13 @@ export type AccionFlujo = {
     requiereObservacion: boolean;
 };
 
+// Requerimiento pedido que el catálogo actual ya no respalda (aviso previo del detalle).
+export type AdvertenciaRequerimiento = {
+    detalle_id: number;
+    bloque: number;
+    mensaje: string;
+};
+
 export type RegistroHistorial = {
     id: number;
     accion: string;

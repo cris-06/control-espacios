@@ -30,14 +30,24 @@ import { Spinner } from '@/components/ui/spinner';
 import { formatearFecha, formatearFechaHora } from '@/lib/reservas';
 import { edit, transicion } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
-import type { AccionFlujo, ReservaVista } from '@/types';
+import type {
+    AccionFlujo,
+    AdvertenciaRequerimiento,
+    ReservaVista,
+} from '@/types';
 
 const props = defineProps<{
     reserva: ReservaVista;
     puede: { editar: boolean };
     acciones: AccionFlujo[];
     traslapes: string[];
+    advertencias: AdvertenciaRequerimiento[];
 }>();
+
+// Bloques con requerimientos que el catálogo ya no respalda (para marcarlos en la lista).
+const bloquesConAdvertencia = computed(
+    () => new Set(props.advertencias.map((a) => a.detalle_id)),
+);
 
 defineOptions({
     layout: {
@@ -215,6 +225,30 @@ const varianteBoton = (accion: AccionFlujo) =>
         </div>
 
         <div
+            v-if="advertencias.length"
+            class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+        >
+            <TriangleAlert class="mt-0.5 size-4 shrink-0" />
+            <div>
+                <p class="font-medium">
+                    Requerimientos que ya no están disponibles
+                </p>
+                <ul class="mt-1 list-disc pl-5">
+                    <li
+                        v-for="advertencia in advertencias"
+                        :key="advertencia.mensaje"
+                    >
+                        {{ advertencia.mensaje }}
+                    </li>
+                </ul>
+                <p class="mt-1">
+                    No se podrá enviar ni aprobar hasta ajustar los
+                    requerimientos.
+                </p>
+            </div>
+        </div>
+
+        <div
             v-if="reserva.observaciones_admin"
             class="rounded-md border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900"
         >
@@ -322,6 +356,15 @@ const varianteBoton = (accion: AccionFlujo) =>
                                 .map((r) => `${r.nombre} (${r.cantidad})`)
                                 .join(', ')
                         }}
+                    </div>
+                    <div
+                        v-if="
+                            detalle.id !== null &&
+                            bloquesConAdvertencia.has(detalle.id)
+                        "
+                        class="text-amber-700 md:col-span-4"
+                    >
+                        Revisa los requerimientos de este espacio.
                     </div>
                     <div
                         v-if="detalle.material_requerido"

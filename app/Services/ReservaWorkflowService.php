@@ -12,6 +12,7 @@ use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
 use App\Models\User;
+use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
@@ -315,15 +316,33 @@ class ReservaWorkflowService
      */
     private function validarRequerimientos(Reserva $reserva): void
     {
-        $errores = [];
+        $problemas = $this->problemasRequerimientos(
+            $reserva->detalles()->with('requerimientosPedidos')->get(),
+            fn (ReservaDetalle $detalle, int $bloque): string => "Espacio $bloque",
+        );
 
-        foreach ($reserva->detalles()->with('requerimientosPedidos')->get()->values() as $i => $detalle) {
-            array_push($errores, ...$this->erroresRequerimientos($detalle, 'Espacio '.($i + 1)));
+        if ($problemas !== []) {
+            throw $this->errores(array_column($problemas, 'mensaje'));
         }
+    }
 
-        if ($errores !== []) {
-            throw $this->errores($errores);
-        }
+    /**
+     * Advertencias previas (solo lectura) sobre requerimientos pedidos que el catálogo
+     * actual ya no respalda, para mostrarlas en el detalle antes de intentar una acción.
+     * Reutiliza los bloques ya cargados y no modifica nada.
+     *
+     * @return list<array{detalle_id: int, bloque: int, mensaje: string}>
+     */
+    public function advertenciasRequerimientos(Reserva $reserva): array
+    {
+        $reserva->loadMissing(['detalles.espacio:id,nombre', 'detalles.requerimientosPedidos']);
+
+        return $this->problemasRequerimientos(
+            $reserva->detalles,
+            fn (ReservaDetalle $detalle, int $bloque): string => $detalle->espacio !== null
+                ? "Espacio $bloque ({$detalle->espacio->nombre})"
+                : "Espacio $bloque",
+        );
     }
 
     /**
@@ -386,6 +405,27 @@ class ReservaWorkflowService
         }
 
         return null;
+    }
+
+    /**
+     * Problemas de requerimientos de cada bloque, numerados en el orden de la relación
+     * (fecha y hora de inicio), el mismo en que se muestran.
+     *
+     * @param  Collection<int, ReservaDetalle>  $detalles
+     * @param  Closure(ReservaDetalle, int): string  $prefijo
+     * @return list<array{detalle_id: int, bloque: int, mensaje: string}>
+     */
+    private function problemasRequerimientos(Collection $detalles, Closure $prefijo): array
+    {
+        $problemas = [];
+
+        foreach ($detalles->values() as $i => $detalle) {
+            foreach ($this->erroresRequerimientos($detalle, $prefijo($detalle, $i + 1)) as $mensaje) {
+                $problemas[] = ['detalle_id' => $detalle->id, 'bloque' => $i + 1, 'mensaje' => $mensaje];
+            }
+        }
+
+        return $problemas;
     }
 
     /**

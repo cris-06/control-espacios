@@ -81,6 +81,9 @@ class ReservaController extends Controller
             'historial.usuario:id,nombre,apellido_paterno,apellido_materno',
         ]);
 
+        $acciones = $this->workflow->disponibles($reserva, $user);
+        $puedeEditar = $user->can('update', $reserva);
+
         return Inertia::render('reservas/Show', [
             'reserva' => [
                 ...$this->datosFormulario($reserva),
@@ -112,12 +115,17 @@ class ReservaController extends Controller
                 ]),
             ],
             'puede' => [
-                'editar' => $user->can('update', $reserva),
+                'editar' => $puedeEditar,
             ],
-            'acciones' => $this->workflow->disponibles($reserva, $user),
+            'acciones' => $acciones,
             // Al decidir, administración ve de antemano los choques que bloquearían la autorización.
             'traslapes' => $user->can('autorizar', $reserva) || $user->can('revisar', $reserva)
                 ? $this->workflow->traslapes($reserva)
+                : [],
+            // Requerimientos que el catálogo ya no respalda: solo para quien puede actuar ahora
+            // (la creadora en borrador o corrección, coordinación al revisar, administración al autorizar).
+            'advertencias' => $puedeEditar || $acciones !== []
+                ? $this->workflow->advertenciasRequerimientos($reserva)
                 : [],
         ]);
     }
