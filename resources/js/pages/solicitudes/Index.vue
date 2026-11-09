@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { Plus } from '@lucide/vue';
+import { FilePen, Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
@@ -49,6 +49,14 @@ const licenciaturaId = ref(
     props.filtros.licenciatura_id ? String(props.filtros.licenciatura_id) : null,
 );
 
+// «Mis borradores» usa el filtro de estado existente (estados_reserva.id = 1, borrador).
+// Los borradores solo los ve quien los creó (Reserva::visiblesPara), así que son los propios.
+const ESTADO_BORRADOR = '1';
+const viendoBorradores = computed(() => estadoId.value === ESTADO_BORRADOR);
+const alternarBorradores = () => {
+    estadoId.value = viendoBorradores.value ? null : ESTADO_BORRADOR;
+};
+
 // Solo se ofrecen las licenciaturas propias; el backend responde 403 a cualquier otra.
 watch([estadoId, licenciaturaId], ([estado, licenciatura]) => {
     router.get(
@@ -71,12 +79,23 @@ watch([estadoId, licenciaturaId], ([estado, licenciatura]) => {
         "
     >
         <template v-if="puedeCrear" #acciones>
-            <Button as-child>
-                <Link :href="create()">
-                    <Plus class="size-4" />
-                    Nueva reserva
-                </Link>
-            </Button>
+            <div class="flex flex-wrap gap-2">
+                <Button
+                    variant="outline"
+                    :aria-pressed="viendoBorradores"
+                    :class="viendoBorradores ? 'bg-accent' : ''"
+                    @click="alternarBorradores"
+                >
+                    <FilePen class="size-4" />
+                    {{ viendoBorradores ? 'Ver todas' : 'Mis borradores' }}
+                </Button>
+                <Button as-child>
+                    <Link :href="create()">
+                        <Plus class="size-4" />
+                        Nueva reserva
+                    </Link>
+                </Button>
+            </div>
         </template>
 
         <TarjetaSeccion titulo="Listado" :descripcion="conteo">

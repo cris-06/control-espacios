@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { Head, Link, useForm } from '@inertiajs/vue3';
-import { Plus, Trash2 } from '@lucide/vue';
-import { computed } from 'vue';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Plus, Send } from '@lucide/vue';
+import { computed, ref } from 'vue';
+import BloqueReserva from '@/components/BloqueReserva.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import InputError from '@/components/InputError.vue';
@@ -10,10 +11,11 @@ import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import { aMinutos } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
-    DetalleFormulario,
+    DetalleEditable,
     OpcionesReserva,
     ReservaFormulario,
 } from '@/types';
@@ -21,7 +23,11 @@ import type {
 const props = defineProps<{
     reserva: ReservaFormulario | null;
     opciones: OpcionesReserva;
+    // Etiqueta de «Guardar y enviar», o null si quien edita no puede enviarla ahora.
+    envio: string | null;
 }>();
+
+const page = usePage();
 
 defineOptions({
     layout: {
@@ -36,15 +42,17 @@ const titulo = computed(() =>
         : 'Nueva reserva',
 );
 
-// CampoSelect trabaja con texto: el espacio se edita como string y se envía como número.
-// Los <Input> no aceptan null: los opcionales vacíos van como '' (Laravel los vuelve null).
-type DetalleEditable = Omit<
-    DetalleFormulario,
-    'espacio_id' | 'cantidad_alumnos' | 'lugar_especifico'
-> & {
-    espacio_id: string | null;
-    cantidad_alumnos: number | '';
-    lugar_especifico: string;
+const aTexto = (valor: number | null | undefined) =>
+    valor === null || valor === undefined ? null : String(valor);
+
+// Por omisión, el responsable de un bloque nuevo es quien llena la solicitud
+// (si es docente o coordinador de alguna de sus licenciaturas).
+const responsablePorOmision = (): string | null => {
+    const id = page.props.auth.user.id;
+
+    return props.opciones.docentes.some((d) => d.id === id)
+        ? String(id)
+        : null;
 };
 
 const detalleVacio = (): DetalleEditable => ({
@@ -58,10 +66,9 @@ const detalleVacio = (): DetalleEditable => ({
     descripcion_actividad: null,
     material_requerido: null,
     observaciones: null,
+    docente_responsable_id: responsablePorOmision(),
+    requerimientos: [],
 });
-
-const aTexto = (valor: number | null | undefined) =>
-    valor === null || valor === undefined ? null : String(valor);
 
 const form = useForm({
     licenciatura_id: aTexto(
@@ -91,8 +98,11 @@ const form = useForm({
             espacio_id: aTexto(d.espacio_id),
             cantidad_alumnos: d.cantidad_alumnos ?? '',
             lugar_especifico: d.lugar_especifico ?? '',
+            docente_responsable_id: aTexto(d.docente_responsable_id),
+            requerimientos: d.requerimientos.map((r) => ({ ...r })),
         }),
     ),
+    enviar: false,
 });
 
 const asignaturas = computed(() =>
@@ -104,36 +114,72 @@ const asignaturas = computed(() =>
     ),
 );
 
-const opcionesEspacios = computed(() =>
-    props.opciones.espacios.map((e) => ({
-        id: e.id,
-        nombre:
-            e.nombre +
-            (e.capacidad ? ` · ${e.capacidad} lugares` : '') +
-            (e.estatus !== 'disponible' ? ' (en mantenimiento)' : ''),
-    })),
-);
-
-const capacidad = (espacioId: string | null) =>
-    props.opciones.espacios.find((e) => String(e.id) === String(espacioId))
-        ?.capacidad ?? null;
-
 const errorDetalle = (i: number, campo: string) =>
     (form.errors as Record<string, string | undefined>)[
         `detalles.${i}.${campo}`
     ];
 
-const agregarDetalle = () => form.detalles.push(detalleVacio());
-const quitarDetalle = (i: number) => form.detalles.splice(i, 1);
+// Clave estable por bloque para que Vue no mezcle el estado de bloques nuevos al quitar uno.
+let siguienteClave = 0;
+const claves = ref(form.detalles.map(() => siguienteClave++));
 
-const guardar = () => {
+const agregarDetalle = () => {
+    form.detalles.push(detalleVacio());
+    claves.value.push(siguienteClave++);
+};
+
+const quitarDetalle = (i: number) => {
+    form.detalles.splice(i, 1);
+    claves.value.splice(i, 1);
+};
+
+// Copia el bloque justo debajo, como bloque nuevo y sin fecha, para otra sesión.
+const duplicarDetalle = (i: number) => {
+    const original = form.detalles[i];
+
+    form.detalles.splice(i + 1, 0, {
+        ...original,
+        id: null,
+        fecha: '',
+        requerimientos: original.requerimientos.map((r) => ({ ...r })),
+    });
+    claves.value.splice(i + 1, 0, siguienteClave++);
+};
+
+// Bloques de esta misma solicitud que se pisan (aviso; el servidor lo valida al enviar).
+const traslapesInternos = computed(() =>
+    form.detalles.map((a, i) =>
+        form.detalles.flatMap((b, j) =>
+            i !== j &&
+            a.espacio_id !== null &&
+            a.espacio_id === b.espacio_id &&
+            a.fecha !== '' &&
+            a.fecha === b.fecha &&
+            a.hora_inicio &&
+            a.hora_fin &&
+            b.hora_inicio &&
+            b.hora_fin &&
+            aMinutos(a.hora_inicio) < aMinutos(b.hora_fin) &&
+            aMinutos(b.hora_inicio) < aMinutos(a.hora_fin)
+                ? [j + 1]
+                : [],
+        ),
+    ),
+);
+
+const guardar = (enviar = false) => {
     const opciones = { preserveScroll: true };
 
+    form.enviar = enviar;
     form.transform((datos) => ({
         ...datos,
         detalles: datos.detalles.map((d) => ({
             ...d,
             espacio_id: d.espacio_id === null ? null : Number(d.espacio_id),
+            docente_responsable_id:
+                d.docente_responsable_id === null
+                    ? null
+                    : Number(d.docente_responsable_id),
         })),
     }));
 
@@ -156,7 +202,7 @@ const textarea =
         :descripcion="
             esEdicion
                 ? 'Los cambios se guardan sin cambiar el estado de la reserva.'
-                : 'Se guardará como borrador. Puedes enviarla a revisión desde su detalle.'
+                : 'Se guardará como borrador. Puedes enviarla ahora con «Guardar y enviar» o después desde su detalle.'
         "
     >
         <div
@@ -174,7 +220,7 @@ const textarea =
             que los dé de alta.
         </div>
 
-        <form class="grid gap-6" @submit.prevent="guardar">
+        <form class="grid gap-6" @submit.prevent="guardar()">
             <TarjetaSeccion titulo="Datos generales">
                 <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
                     <CampoFormulario
@@ -331,7 +377,7 @@ const textarea =
 
             <TarjetaSeccion
                 titulo="Espacios, fechas y horarios"
-                descripcion="Puedes guardar sin espacios; se exigen al enviar a administración."
+                descripcion="Puedes guardar sin espacios; se exigen al enviar a administración. La disponibilidad mostrada es orientativa: se confirma al autorizar."
             >
                 <template #acciones>
                     <Button
@@ -352,138 +398,41 @@ const textarea =
                     Aún no hay espacios en esta reserva.
                 </p>
 
-                <div
-                    v-for="(detalle, i) in form.detalles"
-                    :key="detalle.id ?? `nuevo-${i}`"
-                    class="grid gap-4 border-t border-border p-4 first:border-t-0 md:grid-cols-4 md:p-6"
-                >
-                    <div
-                        class="flex items-center justify-between md:col-span-4"
-                    >
-                        <h3 class="text-sm font-semibold">
-                            Espacio {{ i + 1 }}
-                        </h3>
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            @click="quitarDetalle(i)"
-                        >
-                            <Trash2 class="size-4" />
-                            Quitar
-                        </Button>
-                    </div>
-                    <CampoFormulario
-                        :id="`espacio-${i}`"
-                        etiqueta="Espacio"
-                        :error="errorDetalle(i, 'espacio_id')"
-                        class="md:col-span-2"
-                    >
-                        <CampoSelect
-                            :id="`espacio-${i}`"
-                            v-model="detalle.espacio_id"
-                            :opciones="opcionesEspacios"
-                            vacio="Selecciona un espacio"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`alumnos-${i}`"
-                        :etiqueta="
-                            capacidad(detalle.espacio_id)
-                                ? `Alumnos (máx. ${capacidad(detalle.espacio_id)})`
-                                : 'Alumnos'
-                        "
-                        :error="errorDetalle(i, 'cantidad_alumnos')"
-                        class="md:col-span-2"
-                    >
-                        <Input
-                            :id="`alumnos-${i}`"
-                            v-model.number="detalle.cantidad_alumnos"
-                            type="number"
-                            min="1"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`fecha-${i}`"
-                        etiqueta="Fecha"
-                        :error="errorDetalle(i, 'fecha')"
-                        class="md:col-span-2"
-                    >
-                        <Input
-                            :id="`fecha-${i}`"
-                            v-model="detalle.fecha"
-                            type="date"
-                            required
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`inicio-${i}`"
-                        etiqueta="Hora de inicio"
-                        :error="errorDetalle(i, 'hora_inicio')"
-                    >
-                        <Input
-                            :id="`inicio-${i}`"
-                            v-model="detalle.hora_inicio"
-                            type="time"
-                            required
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`fin-${i}`"
-                        etiqueta="Hora de fin"
-                        :error="errorDetalle(i, 'hora_fin')"
-                    >
-                        <Input
-                            :id="`fin-${i}`"
-                            v-model="detalle.hora_fin"
-                            type="time"
-                            required
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`lugar-${i}`"
-                        etiqueta="Lugar específico (opcional)"
-                        :error="errorDetalle(i, 'lugar_especifico')"
-                        class="md:col-span-4"
-                    >
-                        <Input
-                            :id="`lugar-${i}`"
-                            v-model="detalle.lugar_especifico"
-                            maxlength="150"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`descripcion-${i}`"
-                        etiqueta="Descripción de la actividad (opcional)"
-                        :error="errorDetalle(i, 'descripcion_actividad')"
-                        class="md:col-span-2"
-                    >
-                        <textarea
-                            :id="`descripcion-${i}`"
-                            v-model="detalle.descripcion_actividad"
-                            :class="textarea"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        :id="`material-${i}`"
-                        etiqueta="Material requerido (opcional)"
-                        :error="errorDetalle(i, 'material_requerido')"
-                        class="md:col-span-2"
-                    >
-                        <textarea
-                            :id="`material-${i}`"
-                            v-model="detalle.material_requerido"
-                            :class="textarea"
-                        />
-                    </CampoFormulario>
-                </div>
+                <BloqueReserva
+                    v-for="(_, i) in form.detalles"
+                    :key="claves[i]"
+                    v-model:detalle="form.detalles[i]"
+                    :indice="i"
+                    :espacios="opciones.espacios"
+                    :docentes="opciones.docentes"
+                    :licenciatura-id="form.licenciatura_id"
+                    :reserva-id="reserva?.id ?? null"
+                    :traslapa-con="traslapesInternos[i]"
+                    :error="(campo: string) => errorDetalle(i, campo)"
+                    @duplicar="duplicarDetalle(i)"
+                    @quitar="quitarDetalle(i)"
+                />
                 <InputError class="px-4 pb-4" :message="form.errors.detalles" />
             </TarjetaSeccion>
 
             <div class="flex flex-wrap gap-3">
-                <Button type="submit" :disabled="form.processing">
-                    <Spinner v-if="form.processing" />
+                <Button
+                    type="submit"
+                    :variant="envio ? 'outline' : 'default'"
+                    :disabled="form.processing"
+                >
+                    <Spinner v-if="form.processing && !form.enviar" />
                     {{ esEdicion ? 'Guardar cambios' : 'Guardar borrador' }}
+                </Button>
+                <Button
+                    v-if="envio"
+                    type="button"
+                    :disabled="form.processing"
+                    @click="guardar(true)"
+                >
+                    <Spinner v-if="form.processing && form.enviar" />
+                    <Send v-else class="size-4" />
+                    {{ envio }}
                 </Button>
                 <Button variant="outline" as-child>
                     <Link :href="reserva ? show(reserva.id) : solicitudes()"

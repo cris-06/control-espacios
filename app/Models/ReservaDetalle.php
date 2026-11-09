@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -60,6 +61,27 @@ class ReservaDetalle extends Model
     public function espacio(): BelongsTo
     {
         return $this->belongsTo(Espacio::class, 'espacio_id');
+    }
+
+    /**
+     * Docente que atiende este bloque (opcional).
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function docenteResponsable(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'docente_responsable_id');
+    }
+
+    /**
+     * Requerimientos solicitados para este bloque, con la cantidad pedida.
+     *
+     * @return BelongsToMany<Requerimiento, $this>
+     */
+    public function requerimientos(): BelongsToMany
+    {
+        return $this->belongsToMany(Requerimiento::class, 'reserva_detalle_requerimientos', 'reserva_detalle_id', 'requerimiento_id')
+            ->withPivot('id', 'cantidad');
     }
 
     /**

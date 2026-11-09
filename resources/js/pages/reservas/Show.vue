@@ -277,6 +277,23 @@ const varianteBoton = (accion: AccionFlujo) =>
                         </template>
                     </div>
                     <div
+                        v-if="detalle.docente_responsable"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        Responsable: {{ detalle.docente_responsable }}
+                    </div>
+                    <div
+                        v-if="detalle.requerimientos_vista.length"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        Requerimientos:
+                        {{
+                            detalle.requerimientos_vista
+                                .map((r) => `${r.nombre} (${r.cantidad})`)
+                                .join(', ')
+                        }}
+                    </div>
+                    <div
                         v-if="detalle.material_requerido"
                         class="text-muted-foreground md:col-span-4"
                     >

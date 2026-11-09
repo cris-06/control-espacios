@@ -76,6 +76,58 @@ export type DetalleFormulario = {
     descripcion_actividad: string | null;
     material_requerido: string | null;
     observaciones: string | null;
+    docente_responsable_id: number | null;
+    requerimientos: RequerimientoPedido[];
+};
+
+// Bloque mientras se edita en el formulario. Los <select> trabajan con texto y los
+// <Input> no aceptan null: los opcionales vacíos van como '' (Laravel los vuelve null).
+export type DetalleEditable = Omit<
+    DetalleFormulario,
+    'espacio_id' | 'cantidad_alumnos' | 'lugar_especifico' | 'docente_responsable_id'
+> & {
+    espacio_id: string | null;
+    cantidad_alumnos: number | '';
+    lugar_especifico: string;
+    docente_responsable_id: string | null;
+};
+
+// Requerimiento solicitado para un bloque (tabla reserva_detalle_requerimientos).
+export type RequerimientoPedido = {
+    requerimiento_id: number;
+    cantidad: number;
+};
+
+export type RequerimientoEspacio = Opcion & { cantidad_disponible: number };
+
+export type EspacioOpcion = Opcion & {
+    ubicacion: string | null;
+    capacidad: number | null;
+    minimo_alumnos: number | null;
+    maximo_alumnos: number | null;
+    estatus: string;
+    requerimientos: RequerimientoEspacio[];
+};
+
+export type DocenteOpcion = Opcion & { licenciatura_ids: number[] };
+
+// Respuesta de GET disponibilidad/verificar (folio solo si el usuario puede ver la reserva).
+export type ChoqueDisponibilidad = {
+    hora_inicio: string;
+    hora_fin: string;
+    estado: 'autorizada' | 'pendiente';
+    folio: string | null;
+};
+
+export type VerificacionDisponibilidad = {
+    situacion: Situacion;
+    espacio: {
+        estatus: string;
+        capacidad: number | null;
+        minimo_alumnos: number | null;
+        maximo_alumnos: number | null;
+    };
+    choques: ChoqueDisponibilidad[];
 };
 
 export type ReservaFormulario = {
@@ -102,11 +154,8 @@ export type OpcionesReserva = {
     actividades: Opcion[];
     cuatrimestres: Opcion[];
     asignaturas: (Opcion & { licenciatura_id: number; cuatrimestre_id: number })[];
-    espacios: (Opcion & {
-        ubicacion: string | null;
-        capacidad: number | null;
-        estatus: string;
-    })[];
+    espacios: EspacioOpcion[];
+    docentes: DocenteOpcion[];
 };
 
 export type AccionFlujo = {
@@ -127,6 +176,8 @@ export type RegistroHistorial = {
 export type ReservaDetalleVista = DetalleFormulario & {
     espacio: { nombre: string; ubicacion: string | null; capacidad: number | null };
     estado_detalle: 'pendiente' | 'autorizada' | 'denegada' | 'cancelada' | null;
+    docente_responsable: string | null;
+    requerimientos_vista: { nombre: string; cantidad: number }[];
 };
 
 export type ReservaVista = Omit<ReservaFormulario, 'detalles'> & {
