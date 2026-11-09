@@ -367,6 +367,17 @@ const varianteBoton = (accion: AccionFlujo) =>
                         Revisa los requerimientos de este espacio.
                     </div>
                     <div
+                        v-if="detalle.descripcion_actividad?.trim()"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        <span class="font-medium text-foreground"
+                            >Descripción de la actividad:</span
+                        >
+                        <p class="whitespace-pre-line">
+                            {{ detalle.descripcion_actividad }}
+                        </p>
+                    </div>
+                    <div
                         v-if="detalle.material_requerido"
                         class="text-muted-foreground md:col-span-4"
                     >
