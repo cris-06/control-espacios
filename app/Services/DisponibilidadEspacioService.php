@@ -177,6 +177,45 @@ class DisponibilidadEspacioService
     }
 
     /**
+     * Choques con reservas AUTORIZADAS para mostrarlos en el detalle a quien no decide
+     * (la docente creadora). Solo lectura y sin bloquear filas: el folio de la otra
+     * reserva aparece únicamente si el usuario puede verla (describir()); si no, se
+     * menciona como "otra reserva autorizada", con su horario y nada más.
+     *
+     * @return list<string>
+     */
+    public function traslapesVisibles(Reserva $reserva, User $usuario): array
+    {
+        $reserva->loadMissing('detalles.espacio:id,nombre');
+        $mensajes = [];
+
+        foreach ($reserva->detalles as $detalle) {
+            $choques = $this->choques(
+                $detalle->espacio_id,
+                $detalle->fecha->toDateString(),
+                $detalle->hora_inicio,
+                $detalle->hora_fin,
+                excluirReservaId: $reserva->id,
+            );
+
+            foreach ($this->describir($choques, $usuario) as $choque) {
+                $mensajes[] = sprintf(
+                    '%s el %s de %s a %s choca con %s (%s a %s).',
+                    $detalle->espacio->nombre ?? 'El espacio',
+                    $detalle->fecha->format('d/m/Y'),
+                    ReservaDetalle::hhmm($detalle->hora_inicio),
+                    ReservaDetalle::hhmm($detalle->hora_fin),
+                    $choque['folio'] !== null ? "la reserva autorizada {$choque['folio']}" : 'otra reserva autorizada',
+                    $choque['hora_inicio'],
+                    $choque['hora_fin'],
+                );
+            }
+        }
+
+        return array_values(array_unique($mensajes));
+    }
+
+    /**
      * Pares de bloques de una misma solicitud que se pisan entre sí (índices de la lista).
      *
      * @param  list<array{espacio_id: int, fecha: string, hora_inicio: string, hora_fin: string}>  $bloques
