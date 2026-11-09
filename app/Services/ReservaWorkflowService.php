@@ -113,6 +113,10 @@ class ReservaWorkflowService
 
             if ($transicion['estricta']) {
                 $this->validarCompleta($actual);
+            } elseif ($transicion['permiso'] === 'enviar') {
+                // El envío a coordinación admite borradores incompletos, pero no requerimientos
+                // que el catálogo ya no respalda (pudo cambiar desde que se guardaron).
+                $this->validarRequerimientos($actual);
             }
 
             $avisos = [];
@@ -287,13 +291,7 @@ class ReservaWorkflowService
                 }
             }
 
-            $pedidos = array_values($detalle->requerimientosPedidos
-                ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
-                ->all());
-
-            foreach ($this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos) as $mensaje) {
-                $errores[] = "$n: ".mb_lcfirst($mensaje);
-            }
+            array_push($errores, ...$this->erroresRequerimientos($detalle, $n));
 
             // Dos bloques de la misma reserva no pueden pisarse entre sí.
             foreach ($detalles->values()->slice($i + 1) as $j => $otro) {
@@ -301,6 +299,26 @@ class ReservaWorkflowService
                     $errores[] = "$n y espacio ".($j + 1).': se traslapan en el mismo espacio y horario.';
                 }
             }
+        }
+
+        if ($errores !== []) {
+            throw $this->errores($errores);
+        }
+    }
+
+    /**
+     * Validación ligera del envío a coordinación: solo los requerimientos ya pedidos,
+     * contra el catálogo actual (activos, asignados al espacio y dentro de la cantidad
+     * disponible). No exige que la reserva esté completa.
+     *
+     * @throws ValidationException
+     */
+    private function validarRequerimientos(Reserva $reserva): void
+    {
+        $errores = [];
+
+        foreach ($reserva->detalles()->with('requerimientosPedidos')->get()->values() as $i => $detalle) {
+            array_push($errores, ...$this->erroresRequerimientos($detalle, 'Espacio '.($i + 1)));
         }
 
         if ($errores !== []) {
@@ -368,6 +386,23 @@ class ReservaWorkflowService
         }
 
         return null;
+    }
+
+    /**
+     * Requerimientos pedidos en un bloque que el catálogo actual ya no respalda.
+     *
+     * @return list<string>
+     */
+    private function erroresRequerimientos(ReservaDetalle $detalle, string $n): array
+    {
+        $pedidos = array_values($detalle->requerimientosPedidos
+            ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
+            ->all());
+
+        return array_values(array_map(
+            fn (string $mensaje): string => "$n: ".mb_lcfirst($mensaje),
+            $this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos),
+        ));
     }
 
     /**
