@@ -2,22 +2,31 @@
 
 namespace App\Models;
 
+use Database\Factories\ActividadFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Actividad extends Model
 {
-    protected $table = 'actividades';
-    public $timestamps = false;
+    /** @use HasFactory<ActividadFactory> */
+    use HasFactory;
 
-    protected $fillable = ['nombre', 'estatus'];
+    protected $table = 'actividades';
+
+    protected $primaryKey = 'id';
+
+    // La tabla utiliza fecha_registro en lugar de created_at
+    const CREATED_AT = 'fecha_registro';
+
+    // La tabla no tiene columna updated_at
+    const UPDATED_AT = null;
+
+    protected $fillable = [
+        'nombre',
+        'estatus',
+    ];
 
     protected $casts = [
         'fecha_registro' => 'datetime',
     ];
-
-    public function reservas(): HasMany
-    {
-        return $this->hasMany(Reserva::class, 'actividad_id');
-    }
 }

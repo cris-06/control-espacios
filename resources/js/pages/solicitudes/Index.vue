@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
+import { Plus } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
 import TablaReservas from '@/components/TablaReservas.vue';
 import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
+import { Button } from '@/components/ui/button';
 import { sinVacios } from '@/lib/reservas';
+import { create } from '@/routes/reservas';
 import { index } from '@/routes/solicitudes';
-import type { Opcion, Reserva } from '@/types';
+import type { Opcion, ReservaFila } from '@/types';
 
 defineOptions({
     layout: {
@@ -22,9 +25,11 @@ defineOptions({
 });
 
 const props = defineProps<{
-    filtros: { estado_id: number | null };
+    filtros: { estado_id: number | null; licenciatura_id: number | null };
     opcionesEstados: Opcion[];
-    solicitudes: Reserva[];
+    opcionesLicenciaturas: Opcion[];
+    solicitudes: ReservaFila[];
+    puedeCrear: boolean;
 }>();
 
 const page = usePage();
@@ -40,11 +45,19 @@ const estadoId = ref(
     props.filtros.estado_id ? String(props.filtros.estado_id) : null,
 );
 
-watch(estadoId, (valor) => {
-    router.get(index.url(), sinVacios({ estado_id: valor }), {
-        preserveState: true,
-        preserveScroll: true,
-    });
+const licenciaturaId = ref(
+    props.filtros.licenciatura_id
+        ? String(props.filtros.licenciatura_id)
+        : null,
+);
+
+// Solo se ofrecen las licenciaturas propias; el backend responde 403 a cualquier otra.
+watch([estadoId, licenciaturaId], ([estado, licenciatura]) => {
+    router.get(
+        index.url(),
+        sinVacios({ estado_id: estado, licenciatura_id: licenciatura }),
+        { preserveState: true, preserveScroll: true },
+    );
 });
 </script>
 
@@ -59,8 +72,30 @@ watch(estadoId, (valor) => {
                 : 'Solicitudes visibles para tu rol.'
         "
     >
+        <template v-if="puedeCrear" #acciones>
+            <Button as-child>
+                <Link :href="create()">
+                    <Plus class="size-4" />
+                    Nueva reserva
+                </Link>
+            </Button>
+        </template>
+
         <TarjetaSeccion titulo="Listado" :descripcion="conteo">
             <template #acciones>
+                <div
+                    v-if="opcionesLicenciaturas.length > 1"
+                    class="w-full sm:w-64"
+                >
+                    <CampoFormulario id="licenciatura" etiqueta="Licenciatura">
+                        <CampoSelect
+                            id="licenciatura"
+                            v-model="licenciaturaId"
+                            :opciones="opcionesLicenciaturas"
+                            vacio="Todas mis licenciaturas"
+                        />
+                    </CampoFormulario>
+                </div>
                 <div class="w-full sm:w-64">
                     <CampoFormulario id="estado" etiqueta="Estado">
                         <CampoSelect
@@ -75,7 +110,8 @@ watch(estadoId, (valor) => {
             <TablaReservas
                 :reservas="solicitudes"
                 :mostrar-docente="!esDocente"
-                vacio="No hay solicitudes con este estado."
+                enlazar
+                vacio="No hay solicitudes con estos filtros."
             />
         </TarjetaSeccion>
     </PaginaBase>

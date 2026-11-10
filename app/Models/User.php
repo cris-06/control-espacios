@@ -6,6 +6,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -154,6 +155,27 @@ class User extends Authenticatable{
         }
 
         return $this->licenciaturas()->whereKey($licenciaturaId)->exists();
+    }
+
+    /**
+     * ¿Puede consultar listados y reportes de esta licenciatura?
+     * Administración, cualquiera; los demás, solo las suyas.
+     */
+    public function puedeConsultarLicenciatura(int $licenciaturaId): bool
+    {
+        return $this->esAdministrador() || $this->perteneceALicenciatura($licenciaturaId);
+    }
+
+    /**
+     * Licenciaturas que puede usar como filtro (todas para administración).
+     *
+     * @return Collection<int, Licenciatura>
+     */
+    public function licenciaturasConsultables(): Collection
+    {
+        return $this->esAdministrador()
+            ? Licenciatura::query()->orderBy('nombre')->get(['id', 'nombre'])
+            : $this->licenciaturas()->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
     }
 
     /**

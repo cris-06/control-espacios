@@ -8,7 +8,7 @@ import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { dashboard } from '@/routes';
 import { index as solicitudes } from '@/routes/solicitudes';
-import type { Indicador, Reserva } from '@/types';
+import type { Indicador, Reserva, ReservaFila } from '@/types';
 
 defineOptions({
     layout: {
@@ -23,7 +23,7 @@ defineOptions({
 
 defineProps<{
     indicadores: Indicador[];
-    pendientes: Reserva[];
+    pendientes: ReservaFila[];
     proximas: Reserva[];
 }>();
 
@@ -67,6 +67,7 @@ const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
             <TablaReservas
                 :reservas="pendientes"
                 :mostrar-docente="!esDocente"
+                enlazar
                 vacio="No tienes solicitudes por atender."
             />
         </TarjetaSeccion>
@@ -78,6 +79,7 @@ const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
             <TablaReservas
                 :reservas="proximas"
                 :mostrar-docente="!esDocente"
+                enlazar
                 vacio="No hay reservaciones próximas."
             />
         </TarjetaSeccion>

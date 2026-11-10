@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
+
 import {
+    Building2,
     CalendarDays,
     ChartColumn,
+    ClipboardCheck,
     ClipboardList,
+    GraduationCap,
     LayoutGrid,
+    ListChecks,
+    Users,
 } from '@lucide/vue';
+
 import { useMounted } from '@vueuse/core';
 import { computed, onBeforeUnmount, ref } from 'vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
@@ -17,6 +24,8 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as licenciaturas } from '@/routes/admin/licenciaturas';
+import { index as usuarios } from '@/routes/admin/usuarios';
 import { index as disponibilidad } from '@/routes/disponibilidad';
 import { index as reportes } from '@/routes/reportes';
 import { index as solicitudes } from '@/routes/solicitudes';
@@ -41,10 +50,39 @@ const mainNavItems = computed<NavItem[]>(() => [
         title: esDocente.value ? 'Mis solicitudes' : 'Solicitudes',
         href: solicitudes(),
         icon: ClipboardList,
-        conteo: page.props.demo?.notificaciones.length,
+        conteo: page.props.porAtender || undefined,
     },
     ...(page.props.auth.permisos.verReportes
         ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
+        : []),
+    ...(page.props.auth.permisos.administrar
+        ? [
+              {
+                  title: 'Usuarios',
+                  href: usuarios(),
+                  icon: Users,
+              },
+              {
+                  title: 'Licenciaturas',
+                  href: licenciaturas(),
+                  icon: GraduationCap,
+              },
+              {
+                  title: 'Espacios',
+                  href: '/espacios',
+                  icon: Building2,
+              },
+              {
+                  title: 'Requerimientos',
+                  href: '/requerimientos',
+                  icon: ListChecks,
+              },
+              {
+                  title: 'Actividades',
+                  href: '/actividades',
+                  icon: ClipboardCheck,
+              },
+          ]
         : []),
 ]);
 
@@ -96,7 +134,6 @@ onBeforeUnmount(() => clearTimeout(temporizador));
         <SidebarContent class="pt-3">
             <NavMain :items="mainNavItems" />
         </SidebarContent>
-
     </Sidebar>
 
     <div

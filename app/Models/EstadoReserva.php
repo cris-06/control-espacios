@@ -26,6 +26,33 @@ class EstadoReserva extends Model
 
     public const DENEGADA = 6;
 
+    /** Etiquetas cortas para la interfaz (estados_reserva.descripcion es una frase). */
+    public const ETIQUETAS = [
+        self::BORRADOR => 'Borrador',
+        self::PENDIENTE_COORDINADOR => 'Pendiente de coordinador',
+        self::CORRECCION => 'En corrección',
+        self::PENDIENTE_ADMIN => 'Pendiente de administración',
+        self::AUTORIZADA => 'Autorizada',
+        self::DENEGADA => 'Denegada',
+    ];
+
+    public static function etiqueta(int $id): string
+    {
+        return self::ETIQUETAS[$id] ?? (string) $id;
+    }
+
+    /**
+     * @return list<array{id: int, nombre: string}>
+     */
+    public static function opciones(): array
+    {
+        return array_map(
+            fn (int $id, string $nombre): array => ['id' => $id, 'nombre' => $nombre],
+            array_keys(self::ETIQUETAS),
+            self::ETIQUETAS,
+        );
+    }
+
     protected $table = 'estados_reserva';
 
     public $timestamps = false;

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -41,6 +42,24 @@ class Rol extends Model
         return [
             'nivel' => 'integer',
         ];
+    }
+
+    /**
+     * Roles que el usuario puede asignar: nivel menor o igual al suyo.
+     *
+     * @param  Builder<Rol>  $query
+     */
+    public function scopeAsignablesPor(Builder $query, User $user): void
+    {
+        $query->where('nivel', '<=', $user->nivel())->orderByDesc('nivel');
+    }
+
+    /**
+     * ¿Este rol se asigna a licenciaturas? (docentes y coordinadores)
+     */
+    public function usaLicenciaturas(): bool
+    {
+        return in_array($this->nombre, [self::DOCENTE, self::COORDINADOR], true);
     }
 
     /**

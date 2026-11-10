@@ -2,7 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Support\DatosEjemplo;
+use App\Models\Espacio;
+use App\Models\EstadoReserva;
+use App\Models\Reserva;
+use App\Models\ReservaDetalle;
+use App\Models\User;
+use App\Support\FilasReserva;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
@@ -12,15 +17,16 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * @phpstan-import-type FilaReserva from DatosEjemplo
+ * Ocupación de espacios por día. Cualquier rol ve qué espacio está ocupado, pero
+ * de las reservas que no puede ver (Reserva::visiblesPara) solo aparece "Reservado".
  */
 class DisponibilidadController extends Controller
 {
     /** Solo estas reservas ocupan o pueden llegar a ocupar un espacio. */
     private const ESTADOS_EN_CALENDARIO = [
-        DatosEjemplo::PENDIENTE_COORDINADOR,
-        DatosEjemplo::PENDIENTE_ADMIN,
-        DatosEjemplo::AUTORIZADA,
+        EstadoReserva::PENDIENTE_COORDINADOR,
+        EstadoReserva::PENDIENTE_ADMIN,
+        EstadoReserva::AUTORIZADA,
     ];
 
     public function index(Request $request): Response
@@ -32,17 +38,16 @@ class DisponibilidadController extends Controller
             'hora_fin' => $request->query('hora_fin'),
         ];
 
-        $espacios = collect(DatosEjemplo::espacios());
-
         $validador = Validator::make($filtros, [
             'fecha' => ['required', 'date_format:Y-m-d'],
-            'espacio_id' => ['nullable', Rule::in($espacios->keys()->all())],
+            'espacio_id' => ['nullable', 'integer', Rule::exists('espacios', 'id')],
             'hora_inicio' => ['nullable', 'date_format:H:i', 'required_with:hora_fin'],
             'hora_fin' => ['nullable', 'date_format:H:i', 'required_with:hora_inicio', 'after:hora_inicio'],
         ], [
             'fecha.required' => 'Selecciona una fecha.',
             'fecha.date_format' => 'La fecha no es válida.',
-            'espacio_id.in' => 'El espacio seleccionado no existe.',
+            'espacio_id.exists' => 'El espacio seleccionado no existe.',
+            'espacio_id.integer' => 'El espacio seleccionado no existe.',
             'hora_inicio.date_format' => 'La hora de inicio no es válida.',
             'hora_inicio.required_with' => 'Indica también la hora de inicio.',
             'hora_fin.date_format' => 'La hora de fin no es válida.',
@@ -55,8 +60,8 @@ class DisponibilidadController extends Controller
         return Inertia::render('disponibilidad/Index', [
             'filtros' => $filtros,
             'errores' => array_map(fn (array $mensajes): string => $mensajes[0], $errores),
-            'opcionesEspacios' => $espacios->map(fn (array $espacio): array => ['id' => $espacio['id'], 'nombre' => $espacio['nombre']])->values(),
-            'espacios' => $errores === [] ? $this->consultar($filtros) : [],
+            'opcionesEspacios' => Espacio::query()->orderBy('nombre')->get(['id', 'nombre']),
+            'espacios' => $errores === [] ? $this->consultar($request->user(), $filtros) : [],
         ]);
     }
 
@@ -64,22 +69,42 @@ class DisponibilidadController extends Controller
      * @param  array<string, mixed>  $filtros
      * @return array<int, array<string, mixed>>
      */
-    private function consultar(array $filtros): array
+    private function consultar(User $user, array $filtros): array
     {
-        $reservas = DatosEjemplo::reservas()
-            ->where('fecha', $filtros['fecha'])
-            ->whereIn('estado_id', self::ESTADOS_EN_CALENDARIO)
-            ->sortBy('hora_inicio');
+        $detalles = ReservaDetalle::query()
+            ->whereDate('fecha', $filtros['fecha'])
+            ->whereHas('reserva', fn ($q) => $q->whereIn('estado_id', self::ESTADOS_EN_CALENDARIO))
+            // Una reserva autorizada tiene todos sus detalles autorizados; los denegados no ocupan.
+            ->where(fn ($q) => $q->whereNull('estado_detalle')->orWhereIn('estado_detalle', [ReservaDetalle::PENDIENTE, ReservaDetalle::AUTORIZADA]))
+            ->with(['espacio:id,nombre', 'reserva' => fn ($q) => $q->with(FilasReserva::RELACIONES_RESERVA)])
+            ->orderBy('hora_inicio')
+            ->get();
 
-        return collect(DatosEjemplo::espacios())
-            ->when($filtros['espacio_id'], fn (Collection $espacios, mixed $id) => $espacios->where('id', (int) $id))
-            ->map(function (array $espacio) use ($reservas, $filtros): array {
-                $bloques = $reservas->where('espacio_id', $espacio['id'])->values();
+        $visibles = Reserva::query()
+            ->visiblesPara($user)
+            ->whereIn('id', $detalles->pluck('reserva_id')->unique())
+            ->pluck('id')
+            ->flip();
+
+        $bloques = $detalles->map(fn (ReservaDetalle $detalle): array => FilasReserva::deDetalle($detalle, $visibles->has($detalle->reserva_id)));
+
+        // Los espacios inactivos o en mantenimiento también se listan, como fuera de servicio.
+        return Espacio::query()
+            ->when($filtros['espacio_id'], fn ($q, mixed $id) => $q->whereKey((int) $id))
+            ->orderBy('nombre')
+            ->get()
+            ->map(function (Espacio $espacio) use ($bloques, $filtros): array {
+                $propios = $bloques->where('espacio_id', $espacio->id)->values();
 
                 return [
-                    ...$espacio,
-                    'situacion' => $this->situacion($espacio['estatus'], $bloques, $filtros['hora_inicio'], $filtros['hora_fin']),
-                    'bloques' => $bloques,
+                    'id' => $espacio->id,
+                    'nombre' => $espacio->nombre,
+                    'ubicacion' => $espacio->ubicacion ?? '',
+                    'capacidad' => $espacio->capacidad ?? 0,
+                    'color_calendario' => $espacio->color_calendario ?? '#dc2626',
+                    'estatus' => $espacio->estatus ?? 'disponible',
+                    'situacion' => $this->situacion($espacio->estatus ?? 'disponible', $propios, $filtros['hora_inicio'], $filtros['hora_fin']),
+                    'bloques' => $propios,
                 ];
             })
             ->values()
@@ -90,7 +115,7 @@ class DisponibilidadController extends Controller
      * Un espacio sin servicio nunca se ofrece como disponible. Con un horario consultado,
      * una reserva autorizada lo ocupa y una pendiente solo advierte de un posible conflicto.
      *
-     * @param  Collection<int, FilaReserva>  $bloques
+     * @param  Collection<int, array<string, mixed>>  $bloques
      */
     private function situacion(string $estatus, Collection $bloques, mixed $inicio, mixed $fin): ?string
     {
@@ -105,7 +130,7 @@ class DisponibilidadController extends Controller
         $traslapes = $bloques->filter(fn (array $bloque): bool => $bloque['hora_inicio'] < $fin && $inicio < $bloque['hora_fin']);
 
         return match (true) {
-            $traslapes->contains('estado_id', DatosEjemplo::AUTORIZADA) => 'ocupado',
+            $traslapes->contains('estado_id', EstadoReserva::AUTORIZADA) => 'ocupado',
             $traslapes->isNotEmpty() => 'pendiente',
             default => 'libre',
         };
