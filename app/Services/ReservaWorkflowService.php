@@ -10,6 +10,7 @@ use App\Models\HistorialReserva as H;
 use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
+use App\Models\ReservaDetalleRequerimiento;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
@@ -31,7 +32,11 @@ use Illuminate\Validation\ValidationException;
  */
 class ReservaWorkflowService
 {
-    public function __construct(private readonly NotificacionService $notificaciones) {}
+    public function __construct(
+        private readonly NotificacionService $notificaciones,
+        private readonly DisponibilidadEspacioService $disponibilidad,
+        private readonly ValidacionDetalleReserva $validacionDetalle,
+    ) {}
 
     public const ENVIAR = 'enviar';
 
@@ -113,6 +118,15 @@ class ReservaWorkflowService
             $avisos = [];
 
             if ($transicion['traslapes'] !== null) {
+                // Al autorizar, se bloquean los espacios ANTES de volver a consultar los choques:
+                // otra autorización sobre el mismo espacio espera a que esta confirme, y la
+                // consulta (con FOR UPDATE) lee lo último confirmado dentro de esta transacción.
+                if ($transicion['traslapes'] === 'bloquear') {
+                    $this->disponibilidad->bloquearEspacios(
+                        $actual->detalles()->pluck('espacio_id')->all(),
+                    );
+                }
+
                 $traslapes = $this->traslapes($actual);
 
                 if ($traslapes !== [] && $transicion['traslapes'] === 'bloquear') {
@@ -235,7 +249,7 @@ class ReservaWorkflowService
         }
 
         /** @var Collection<int, ReservaDetalle> $detalles */
-        $detalles = $reserva->detalles()->with('espacio')->get();
+        $detalles = $reserva->detalles()->with(['espacio', 'requerimientosPedidos'])->get();
 
         if ($detalles->isEmpty()) {
             $errores[] = 'Agrega al menos un espacio con fecha y horario.';
@@ -264,6 +278,23 @@ class ReservaWorkflowService
                 $errores[] = "$n: {$detalle->cantidad_alumnos} alumnos superan la capacidad de {$detalle->espacio->nombre} ({$detalle->espacio->capacidad}).";
             }
 
+            // El catálogo pudo cambiar desde que se guardó: se revalidan responsable y requerimientos.
+            if ($detalle->docente_responsable_id !== null) {
+                $error = $this->validacionDetalle->errorDocente($detalle->docente_responsable_id, $reserva->licenciatura_id);
+
+                if ($error !== null) {
+                    $errores[] = "$n: ".mb_lcfirst($error);
+                }
+            }
+
+            $pedidos = array_values($detalle->requerimientosPedidos
+                ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
+                ->all());
+
+            foreach ($this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos) as $mensaje) {
+                $errores[] = "$n: ".mb_lcfirst($mensaje);
+            }
+
             // Dos bloques de la misma reserva no pueden pisarse entre sí.
             foreach ($detalles->values()->slice($i + 1) as $j => $otro) {
                 if ($this->seTraslapan($detalle, $otro)) {
@@ -287,17 +318,14 @@ class ReservaWorkflowService
         $mensajes = [];
 
         foreach ($reserva->detalles()->with('espacio:id,nombre')->get() as $detalle) {
-            $choques = ReservaDetalle::query()
-                ->where('espacio_id', $detalle->espacio_id)
-                ->whereDate('fecha', $detalle->fecha->toDateString())
-                ->where('hora_inicio', '<', $detalle->hora_fin)
-                ->where('hora_fin', '>', $detalle->hora_inicio)
-                ->where('reserva_id', '!=', $reserva->id)
-                ->where('estado_detalle', ReservaDetalle::AUTORIZADA)
-                ->whereHas('reserva', fn ($q) => $q->where('estado_id', E::AUTORIZADA))
-                ->with('reserva:id,folio')
-                ->lockForUpdate()
-                ->get();
+            $choques = $this->disponibilidad->choques(
+                $detalle->espacio_id,
+                $detalle->fecha->toDateString(),
+                $detalle->hora_inicio,
+                $detalle->hora_fin,
+                excluirReservaId: $reserva->id,
+                bloquear: true,
+            );
 
             foreach ($choques as $choque) {
                 $mensajes[] = sprintf(

@@ -12,6 +12,7 @@ use App\Http\Controllers\RequerimientoController;
 use App\Http\Controllers\ReservaController;
 use App\Http\Controllers\ReservaTransicionController;
 use App\Http\Controllers\SolicitudController;
+use App\Http\Controllers\VerificarDisponibilidadController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/dashboard')->name('home');
@@ -20,6 +21,10 @@ Route::redirect('/', '/dashboard')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('disponibilidad', [DisponibilidadController::class, 'index'])->name('disponibilidad.index');
+    // Consulta en vivo desde el formulario de solicitud (JSON). La autoriza el propio controlador.
+    Route::get('disponibilidad/verificar', VerificarDisponibilidadController::class)
+        ->middleware('throttle:60,1')
+        ->name('disponibilidad.verificar');
     Route::get('solicitudes', [SolicitudController::class, 'index'])->name('solicitudes.index');
 
     // Reservas: cada acción la autoriza ReservaPolicy; los estados, ReservaWorkflowService.

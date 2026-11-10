@@ -5,9 +5,12 @@ namespace App\Http\Requests;
 use App\Models\Reserva;
 use App\Models\User;
 use App\Services\ReservaService;
+use App\Services\ValidacionDetalleReserva;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\MessageBag;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 /**
  * Guardar una reserva (crear o editar). Es intencionalmente flexible: un docente
@@ -77,7 +80,63 @@ class ReservaRequest extends FormRequest
             'detalles.*.descripcion_actividad' => ['nullable', 'string', 'max:5000'],
             'detalles.*.material_requerido' => ['nullable', 'string', 'max:5000'],
             'detalles.*.observaciones' => ['nullable', 'string', 'max:5000'],
+            'detalles.*.docente_responsable_id' => ['nullable', 'integer'],
+            'detalles.*.requerimientos' => ['nullable', 'array', 'max:30'],
+            // Sin `distinct`: con comodines anidados compararía contra TODOS los bloques, y el
+            // mismo requerimiento sí puede pedirse en bloques distintos. Se revisa por bloque en after().
+            'detalles.*.requerimientos.*.requerimiento_id' => ['required', 'integer'],
+            'detalles.*.requerimientos.*.cantidad' => ['required', 'integer', 'min:1', 'max:100000'],
         ];
+    }
+
+    /**
+     * Integridad que depende de otros datos (docente de la licenciatura, requerimientos
+     * del espacio). Solo se revisa lo que ya pasó las reglas básicas.
+     *
+     * @return list<callable>
+     */
+    public function after(ValidacionDetalleReserva $validacion): array
+    {
+        return [function (Validator $validator) use ($validacion): void {
+            $errores = $validator->errors();
+            $licenciaturaId = (int) $this->input('licenciatura_id');
+
+            foreach ((array) $this->input('detalles', []) as $i => $detalle) {
+                if (! is_array($detalle)) {
+                    continue;
+                }
+
+                $docenteId = $detalle['docente_responsable_id'] ?? null;
+
+                if (is_numeric($docenteId) && ! $errores->has('licenciatura_id') && ! $errores->has("detalles.$i.docente_responsable_id")) {
+                    $error = $validacion->errorDocente((int) $docenteId, $licenciaturaId);
+
+                    if ($error !== null) {
+                        $errores->add("detalles.$i.docente_responsable_id", $error);
+                    }
+                }
+
+                $requerimientos = $detalle['requerimientos'] ?? null;
+
+                if (is_array($requerimientos)) {
+                    $this->marcarRepetidos($requerimientos, "detalles.$i.requerimientos", $errores);
+                }
+
+                $conErrores = collect($errores->keys())->contains(
+                    fn (string $clave): bool => str_starts_with($clave, "detalles.$i.requerimientos") || $clave === "detalles.$i.espacio_id",
+                );
+
+                if (! is_array($requerimientos) || $requerimientos === [] || $conErrores) {
+                    continue;
+                }
+
+                $fallos = $validacion->erroresRequerimientos((int) $detalle['espacio_id'], $this->normalizarRequerimientos($requerimientos));
+
+                foreach ($fallos as $j => $mensaje) {
+                    $errores->add("detalles.$i.requerimientos.$j", $mensaje);
+                }
+            }
+        }];
     }
 
     /**
@@ -102,6 +161,11 @@ class ReservaRequest extends FormRequest
             'detalles.*.hora_fin.date_format' => 'La hora de fin no es válida.',
             'detalles.*.hora_fin.after' => 'La hora de fin debe ser posterior a la de inicio.',
             'detalles.*.cantidad_alumnos.min' => 'La cantidad de alumnos debe ser al menos 1.',
+            'detalles.*.docente_responsable_id.integer' => 'Selecciona un docente responsable válido.',
+            'detalles.*.requerimientos.max' => 'Son demasiados requerimientos para un solo espacio.',
+            'detalles.*.requerimientos.*.requerimiento_id.required' => 'Selecciona el requerimiento.',
+            'detalles.*.requerimientos.*.cantidad.required' => 'Indica la cantidad.',
+            'detalles.*.requerimientos.*.cantidad.min' => 'La cantidad debe ser al menos 1.',
         ];
     }
 
@@ -137,9 +201,55 @@ class ReservaRequest extends FormRequest
                 'descripcion_actividad' => $texto($detalle['descripcion_actividad'] ?? null),
                 'material_requerido' => $texto($detalle['material_requerido'] ?? null),
                 'observaciones' => $texto($detalle['observaciones'] ?? null),
+                'docente_responsable_id' => $entero($detalle['docente_responsable_id'] ?? null),
+                // null = no se enviaron: se conservan los requerimientos guardados.
+                'requerimientos' => array_key_exists('requerimientos', $detalle)
+                    ? $this->normalizarRequerimientos((array) $detalle['requerimientos'])
+                    : null,
             ];
         }
 
         return $detalles;
+    }
+
+    /**
+     * Un requerimiento no puede repetirse DENTRO de un mismo bloque (en bloques distintos
+     * sí). Se marcan todas sus apariciones, como hacía la regla `distinct`.
+     *
+     * @param  array<mixed>  $requerimientos
+     */
+    private function marcarRepetidos(array $requerimientos, string $prefijo, MessageBag $errores): void
+    {
+        $ids = [];
+
+        foreach ($requerimientos as $j => $requerimiento) {
+            $id = is_array($requerimiento) ? ($requerimiento['requerimiento_id'] ?? null) : null;
+
+            if (is_numeric($id)) {
+                $ids[$j] = (string) (int) $id;
+            }
+        }
+
+        $veces = array_count_values($ids);
+
+        foreach ($ids as $j => $id) {
+            $clave = "$prefijo.$j.requerimiento_id";
+
+            if ($veces[$id] > 1 && ! $errores->has($clave)) {
+                $errores->add($clave, 'El requerimiento está repetido.');
+            }
+        }
+    }
+
+    /**
+     * @param  array<mixed>  $requerimientos
+     * @return list<array{requerimiento_id: int, cantidad: int}>
+     */
+    private function normalizarRequerimientos(array $requerimientos): array
+    {
+        return array_values(array_map(fn (mixed $r): array => [
+            'requerimiento_id' => (int) (is_array($r) ? ($r['requerimiento_id'] ?? 0) : 0),
+            'cantidad' => (int) (is_array($r) ? ($r['cantidad'] ?? 0) : 0),
+        ], $requerimientos));
     }
 }

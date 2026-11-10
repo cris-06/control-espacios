@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\DB;
  * Alta y edición de reservas con sus detalles. No cambia el estado:
  * eso lo hace exclusivamente ReservaWorkflowService.
  *
- * @phpstan-type DatosDetalle array{id?: int|null, espacio_id: int, fecha: string, hora_inicio: string, hora_fin: string, cantidad_alumnos?: int|null, lugar_especifico?: string|null, descripcion_actividad?: string|null, material_requerido?: string|null, observaciones?: string|null}
+ * @phpstan-type DatosRequerimiento array{requerimiento_id: int, cantidad: int}
+ * @phpstan-type DatosDetalle array{id?: int|null, espacio_id: int, fecha: string, hora_inicio: string, hora_fin: string, cantidad_alumnos?: int|null, lugar_especifico?: string|null, descripcion_actividad?: string|null, material_requerido?: string|null, observaciones?: string|null, docente_responsable_id?: int|null, requerimientos?: list<DatosRequerimiento>|null}
  */
 class ReservaService
 {
@@ -120,7 +121,9 @@ class ReservaService
 
         foreach ($detalles as $datos) {
             $id = $datos['id'] ?? null;
-            unset($datos['id']);
+            // null (o ausente) = no se enviaron: se conservan los requerimientos guardados.
+            $requerimientos = $datos['requerimientos'] ?? null;
+            unset($datos['id'], $datos['requerimientos']);
 
             $datos['hora_inicio'] = $this->hora($datos['hora_inicio']);
             $datos['hora_fin'] = $this->hora($datos['hora_fin']);
@@ -137,6 +140,10 @@ class ReservaService
             $cambio = $cambio || ! $detalle->exists || $detalle->isDirty();
             $detalle->save();
 
+            if ($requerimientos !== null) {
+                $cambio = $this->sincronizarRequerimientos($detalle, $requerimientos) || $cambio;
+            }
+
             $conservados[] = $detalle->id;
         }
 
@@ -146,6 +153,39 @@ class ReservaService
             ->delete();
 
         return $cambio || $eliminados > 0;
+    }
+
+    /**
+     * Deja en reserva_detalle_requerimientos exactamente los requerimientos pedidos.
+     * El cambio se detecta comparando antes y después (el conteo de filas afectadas
+     * de sync() difiere entre MySQL y SQLite).
+     *
+     * @param  list<array{requerimiento_id: int, cantidad: int}>  $requerimientos
+     * @return bool si hubo algún cambio
+     */
+    private function sincronizarRequerimientos(ReservaDetalle $detalle, array $requerimientos): bool
+    {
+        $nuevos = [];
+
+        foreach ($requerimientos as $requerimiento) {
+            $nuevos[$requerimiento['requerimiento_id']] = $requerimiento['cantidad'];
+        }
+
+        $actuales = $detalle->requerimientos()
+            ->pluck('reserva_detalle_requerimientos.cantidad', 'requerimientos.id')
+            ->map(fn (mixed $cantidad): int => (int) $cantidad)
+            ->all();
+
+        ksort($nuevos);
+        ksort($actuales);
+
+        if ($nuevos === $actuales) {
+            return false;
+        }
+
+        $detalle->requerimientos()->sync(array_map(fn (int $cantidad): array => ['cantidad' => $cantidad], $nuevos));
+
+        return true;
     }
 
     /**
