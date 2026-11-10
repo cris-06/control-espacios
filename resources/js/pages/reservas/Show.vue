@@ -395,6 +395,15 @@ const varianteBoton = (accion: AccionFlujo) =>
                         {{ detalle.estado_detalle ?? 'pendiente' }}
                     </div>
                     <div
+                        v-if="detalle.lugar_especifico?.trim()"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        <span class="font-medium text-foreground"
+                            >Lugar específico:</span
+                        >
+                        {{ detalle.lugar_especifico }}
+                    </div>
+                    <div
                         v-if="detalle.cantidad_alumnos"
                         class="text-muted-foreground md:col-span-4"
                     >
