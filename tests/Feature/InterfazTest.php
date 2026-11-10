@@ -6,8 +6,7 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 function verComo(string $rol): void
 {
-    test()->actingAs(User::factory()->create())
-        ->withSession(['rol_demo' => $rol]);
+    test()->actingAs(User::factory()->rol($rol)->create());
 }
 
 test('guests cannot open the interface modules', function (string $ruta) {
@@ -28,7 +27,7 @@ test('every role sees its own dashboard', function (string $rol, string $indicad
 
     $this->get(route('dashboard'))->assertInertia(fn (Assert $pagina) => $pagina
         ->component('Dashboard')
-        ->where('demo.rol', $rol)
+        ->where('auth.rol.nombre', $rol)
         ->where('indicadores.0.titulo', $indicador));
 })->with([
     ['superadmin', 'Por autorizar'],
@@ -140,24 +139,4 @@ test('availability rejects a schedule that ends before it starts', function () {
         ->assertInertia(fn (Assert $pagina) => $pagina
             ->where('errores.hora_fin', 'La hora de fin debe ser posterior a la de inicio.')
             ->where('espacios', []));
-});
-
-test('changing the demo role never lands on a page the new role cannot open', function () {
-    verComo('admin');
-
-    $this->from(route('reportes.index'))
-        ->post(route('demo.rol'), ['rol' => 'docente'])
-        ->assertRedirect(route('dashboard'));
-
-    $this->get(route('dashboard'))->assertOk();
-});
-
-test('the demo role can be changed and rejects unknown roles', function () {
-    $this->actingAs(User::factory()->create());
-
-    $this->post(route('demo.rol'), ['rol' => 'docente'])->assertSessionHas('rol_demo', 'docente');
-
-    $this->from(route('dashboard'))
-        ->post(route('demo.rol'), ['rol' => 'rector'])
-        ->assertSessionHasErrors('rol');
 });

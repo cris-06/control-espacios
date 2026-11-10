@@ -4,85 +4,70 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * Reserva (tabla `reservas`). Por ahora solo lo necesario para la autorización;
+ * el flujo de estados se implementa en ReservaWorkflowService (Fase 4).
+ *
+ * @property int $id
+ * @property int $usuario_creador_id
+ * @property int|null $coordinador_id
+ * @property int $licenciatura_id
+ * @property int $estado_id
+ * @property string|null $observaciones_admin
+ */
 class Reserva extends Model
 {
-    protected $table = 'reservas';
-
-    // Esta tabla SÍ tiene fecha de creación y de actualización, con nombres propios
     const CREATED_AT = 'fecha_creacion';
+
     const UPDATED_AT = 'fecha_actualizacion';
 
-    protected $fillable = [
-        'usuario_creador_id',
-        'coordinador_id',
-        'actividad_id',
-        'licenciatura_id',
-        'tipo_formato',
-        'nombre_actividad',
-        'folio',
-        'objetivo',
-        'cuatrimestre_id',
-        'asignatura_id',
-        'costo_alumno',
-        'promocion_redes',
-        'limite_min_usuarios',
-        'limite_max_usuarios',
-        'fecha_entrega_formato',
-        'estado_id',
-        'observaciones_admin',
-    ];
+    protected $table = 'reservas';
 
-    protected $casts = [
-        'fecha_entrega_formato' => 'date',
-        'costo_alumno' => 'decimal:2',
-        'fecha_creacion' => 'datetime',
-        'fecha_actualizacion' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'usuario_creador_id' => 'integer',
+            'coordinador_id' => 'integer',
+            'licenciatura_id' => 'integer',
+            'estado_id' => 'integer',
+        ];
+    }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function creador(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_creador_id');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function coordinador(): BelongsTo
     {
         return $this->belongsTo(User::class, 'coordinador_id');
     }
 
-    public function actividad(): BelongsTo
-    {
-        return $this->belongsTo(Actividad::class, 'actividad_id');
-    }
-
+    /**
+     * @return BelongsTo<Licenciatura, $this>
+     */
     public function licenciatura(): BelongsTo
     {
         return $this->belongsTo(Licenciatura::class, 'licenciatura_id');
     }
 
-    public function cuatrimestre(): BelongsTo
-    {
-        return $this->belongsTo(Cuatrimestre::class, 'cuatrimestre_id');
-    }
-
-    public function asignatura(): BelongsTo
-    {
-        return $this->belongsTo(Asignatura::class, 'asignatura_id');
-    }
-
+    /**
+     * @return BelongsTo<EstadoReserva, $this>
+     */
     public function estado(): BelongsTo
     {
         return $this->belongsTo(EstadoReserva::class, 'estado_id');
     }
 
-    public function detalles(): HasMany
+    public function enEstado(int ...$estados): bool
     {
-        return $this->hasMany(ReservaDetalle::class, 'reserva_id');
-    }
-
-    public function historial(): HasMany
-    {
-        return $this->hasMany(HistorialReserva::class, 'reserva_id');
+        return in_array($this->estado_id, $estados, true);
     }
 }

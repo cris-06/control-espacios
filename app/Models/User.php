@@ -2,89 +2,166 @@
 
 namespace App\Models;
 
+use Database\Factories\UserFactory;
+use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
-class User extends Authenticatable
+/**
+ * Usuario autenticable, mapeado a la tabla existente `usuarios`.
+ *
+ * @property int $id
+ * @property string $nombre
+ * @property string $apellido_paterno
+ * @property string|null $apellido_materno
+ * @property string $correo
+ * @property string|null $telefono
+ * @property int $rol_id
+ * @property string|null $estatus
+ * @property-read string $name
+ * @property-read string $email
+ * @property Carbon|null $fecha_registro
+ * @property Carbon|null $updated_at
+ */
+#[Fillable(['nombre', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'password', 'rol_id', 'estatus'])]
+#[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
+class User extends Authenticatable implements PasskeyUser
 {
     use HasFactory, Notifiable;
 
+    const CREATED_AT = 'fecha_registro';
+
+    const UPDATED_AT = 'updated_at';
+
     protected $table = 'usuarios';
 
-    const CREATED_AT = 'fecha_registro';
-    const UPDATED_AT = null;
+    /**
+     * Se incluyen en el JSON (p. ej. auth.user en Inertia) para el frontend.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['name', 'email'];
 
-    protected $fillable = [
-        'nombre',
-        'apellido_paterno',
-        'apellido_materno',
-        'correo',
-        'telefono',
-        'password',
-        'rol_id',
-        'estatus',
-        'debe_cambiar_password',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'two_factor_confirmed_at' => 'datetime',
+            'debe_cambiar_password' => 'boolean',
+        ];
+    }
 
-    protected $hidden = ['password', 'remember_token'];
+    /**
+     * Nombre completo: nombre + apellido paterno + apellido materno.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function name(): Attribute
+    {
+        return Attribute::get(fn (): string => trim(implode(' ', array_filter([
+            $this->nombre,
+            $this->apellido_paterno,
+            $this->apellido_materno,
+        ]))));
+    }
 
-    protected $casts = [
-        'password' => 'hashed',
-        'debe_cambiar_password' => 'boolean',
-        'fecha_registro' => 'datetime',
-    ];
+    /**
+     * Alias de `correo` para el código de Laravel/Fortify que espera `email`.
+     *
+     * @return Attribute<string, never>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::get(fn (): string => $this->correo);
+    }
 
+    /**
+     * @return BelongsTo<Rol, $this>
+     */
     public function rol(): BelongsTo
     {
         return $this->belongsTo(Rol::class, 'rol_id');
     }
 
+    /**
+     * Licenciaturas asignadas vía usuario_licenciaturas.
+     *
+     * @return BelongsToMany<Licenciatura, $this>
+     */
     public function licenciaturas(): BelongsToMany
     {
         return $this->belongsToMany(Licenciatura::class, 'usuario_licenciaturas', 'usuario_id', 'licenciatura_id');
     }
 
-    public function reservasCreadas(): HasMany
+    public function nombreRol(): string
     {
-        return $this->hasMany(Reserva::class, 'usuario_creador_id');
+        return $this->rol->nombre;
     }
 
-    public function reservasCoordinadas(): HasMany
+    public function nivel(): int
     {
-        return $this->hasMany(Reserva::class, 'coordinador_id');
+        return $this->rol->nivel;
     }
 
-    public function detallesComoDocente(): HasMany
+    /**
+     * ¿Tiene alguno de estos roles (por nombre)?
+     */
+    public function tieneRol(string ...$roles): bool
     {
-        return $this->hasMany(ReservaDetalle::class, 'docente_responsable_id');
+        return in_array($this->nombreRol(), $roles, true);
     }
 
-    public function historial(): HasMany
+    /**
+     * ¿Su nivel es al menos el indicado? (p. ej. Rol::NIVEL_ADMIN)
+     */
+    public function tieneNivel(int $minimo): bool
     {
-        return $this->hasMany(HistorialReserva::class, 'usuario_id');
+        return $this->nivel() >= $minimo;
     }
 
-    public function notificaciones(): HasMany
+    public function esAdministrador(): bool
     {
-        return $this->hasMany(Notificacion::class, 'usuario_id');
+        return $this->tieneNivel(Rol::NIVEL_ADMIN);
     }
 
-    public function anuncios(): HasMany
+    public function esCoordinador(): bool
     {
-        return $this->hasMany(Anuncio::class, 'admin_id');
+        return $this->tieneRol(Rol::COORDINADOR);
     }
 
-    public function solicitudesCambioPassword(): HasMany
+    public function esDocente(): bool
     {
-        return $this->hasMany(SolicitudCambioPassword::class, 'usuario_id');
+        return $this->tieneRol(Rol::DOCENTE);
     }
 
-    public function passwordResets(): HasMany
+    public function estaActivo(): bool
     {
-        return $this->hasMany(PasswordReset::class, 'usuario_id');
+        return $this->estatus === 'activo';
+    }
+
+    /**
+     * ¿Está asignado a esta licenciatura en usuario_licenciaturas?
+     */
+    public function perteneceALicenciatura(int $licenciaturaId): bool
+    {
+        if ($this->relationLoaded('licenciaturas')) {
+            return $this->licenciaturas->contains('id', $licenciaturaId);
+        }
+
+        return $this->licenciaturas()->whereKey($licenciaturaId)->exists();
+    }
+
+    /**
+     * ¿Es coordinador de esta licenciatura?
+     */
+    public function coordinaLicenciatura(int $licenciaturaId): bool
+    {
+        return $this->esCoordinador() && $this->perteneceALicenciatura($licenciaturaId);
     }
 }

@@ -18,9 +18,8 @@ class ReporteController extends Controller
 {
     public function index(Request $request): Response
     {
+        // El acceso lo restringe el middleware 'rol:coordinador,admin,superadmin' en routes/web.php.
         $rol = DatosEjemplo::rolActual($request);
-
-        abort_if($rol === 'docente', 403);
 
         $hoy = Date::today();
         $licenciaturas = DatosEjemplo::licenciaturasVisibles($rol);

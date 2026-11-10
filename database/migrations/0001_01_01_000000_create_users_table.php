@@ -4,6 +4,11 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * La tabla `users` de Laravel ya no se usa: la autenticación se hace contra
+ * la tabla `usuarios` existente (ver 0001_01_01_000003_create_roles_and_usuarios_tables).
+ * Solo se conservan las tablas auxiliares de restablecimiento de contraseña y sesiones.
+ */
 return new class extends Migration
 {
     public function up(): void

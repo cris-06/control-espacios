@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Rol;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
@@ -10,8 +12,8 @@ use Illuminate\Support\Facades\Date;
  * Datos ficticios para construir la interfaz mientras no existan los modelos ni los roles reales.
  *
  * TEMPORAL: los identificadores de estados y roles coinciden con BD_Reservas_corregida.sql.
- * Cuando estén listos los modelos Eloquent y la autorización, esta clase y DemoRolController
- * se eliminan y los controladores deben consultar la base de datos.
+ * El rol ya es el real del usuario (Fase 2). Cuando existan las reservas reales (Fases 4-6),
+ * esta clase se elimina y los controladores deben consultar la base de datos.
  *
  * @phpstan-type FilaReserva array{id: int, folio: string, actividad: string, usuario_creador_id: int, docente: string, licenciatura_id: int, licenciatura: string, espacio_id: int, espacio: string, fecha: string, hora_inicio: string, hora_fin: string, cantidad_alumnos: int, estado_id: int, estado: string}
  */
@@ -40,8 +42,6 @@ class DatosEjemplo
         self::DENEGADA => 'Denegada',
         self::CANCELADA => 'Cancelada',
     ];
-
-    public const ROLES = ['superadmin', 'admin', 'coordinador', 'docente'];
 
     public const LICENCIATURAS = [
         1 => 'Sistemas Computacionales',
@@ -124,11 +124,15 @@ class DatosEjemplo
         ]);
     }
 
+    /**
+     * Rol real del usuario autenticado (usuarios.rol_id -> roles.nombre).
+     * Los datos siguen siendo de ejemplo, pero ya no se puede elegir el rol.
+     */
     public static function rolActual(Request $request): string
     {
-        $rol = $request->session()->get('rol_demo');
+        $user = $request->user();
 
-        return in_array($rol, self::ROLES, true) ? $rol : 'admin';
+        return $user instanceof User ? $user->nombreRol() : Rol::DOCENTE;
     }
 
     /**

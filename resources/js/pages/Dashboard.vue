@@ -28,7 +28,7 @@ defineProps<{
 }>();
 
 const page = usePage();
-const esDocente = computed(() => page.props.demo?.rol === 'docente');
+const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
 </script>
 
 <template>

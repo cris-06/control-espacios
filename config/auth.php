@@ -114,4 +114,22 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Superadmin inicial
+    |--------------------------------------------------------------------------
+    |
+    | Datos que usa Database\Seeders\AdminSeeder para crear el primer
+    | superadmin en la tabla `usuarios`. Defínelos en el .env.
+    |
+    */
+
+    'admin_inicial' => [
+        'correo' => env('ADMIN_CORREO'),
+        'password' => env('ADMIN_PASSWORD'),
+        'nombre' => env('ADMIN_NOMBRE', 'Administrador'),
+        'apellido_paterno' => env('ADMIN_APELLIDO_PATERNO', 'Sistema'),
+        'apellido_materno' => env('ADMIN_APELLIDO_MATERNO'),
+    ],
+
 ];

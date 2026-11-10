@@ -34,16 +34,16 @@ defineProps<{
     <div class="space-y-6">
         <Form v-bind="email.form()" v-slot="{ errors, processing }">
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="correo">Correo electrónico</Label>
                 <Input
-                    id="email"
+                    id="correo"
                     type="email"
-                    name="email"
+                    name="correo"
                     autocomplete="off"
                     v-focus
-                    placeholder="email@example.com"
+                    placeholder="correo@ejemplo.com"
                 />
-                <InputError :message="errors.email" />
+                <InputError :message="errors.correo ?? errors.email" />
             </div>
 
             <div class="my-6 flex items-center justify-start">

@@ -36,15 +36,22 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'rol' => $user?->rol?->only(['nombre', 'nivel']),
+                // Solo para mostrar u ocultar opciones; el backend vuelve a validar cada acción.
+                'permisos' => [
+                    'administrar' => (bool) $user?->can('administrar'),
+                    'verReportes' => (bool) $user?->can('ver-reportes'),
+                ],
             ],
-            'demo' => $request->user() ? [
-                'rol' => DatosEjemplo::rolActual($request),
-                'roles' => DatosEjemplo::ROLES,
+            // TEMPORAL: notificaciones de ejemplo hasta la Fase 5 (tabla notificaciones).
+            'demo' => $user ? [
                 'notificaciones' => DatosEjemplo::porAtender(DatosEjemplo::rolActual($request)),
             ] : null,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
