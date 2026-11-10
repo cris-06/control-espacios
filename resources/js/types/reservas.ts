@@ -181,6 +181,23 @@ export type AccionFlujo = {
     requiereObservacion: boolean;
 };
 
+// Requerimiento pedido que el catálogo actual ya no respalda (aviso previo del detalle).
+export type AdvertenciaRequerimiento = {
+    detalle_id: number;
+    bloque: number;
+    mensaje: string;
+};
+
+// Corrección o decisión vigente según el estado actual (autor, rol y fecha pueden faltar
+// en registros antiguos sin historial).
+export type ObservacionVigente = {
+    tipo: 'correccion_solicitada' | 'autorizada' | 'denegada';
+    comentario: string | null;
+    autor: string | null;
+    rol: string | null;
+    fecha: string | null;
+};
+
 export type RegistroHistorial = {
     id: number;
     accion: string;

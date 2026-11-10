@@ -30,14 +30,57 @@ import { Spinner } from '@/components/ui/spinner';
 import { formatearFecha, formatearFechaHora } from '@/lib/reservas';
 import { edit, transicion } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
-import type { AccionFlujo, ReservaVista } from '@/types';
+import type {
+    AccionFlujo,
+    AdvertenciaRequerimiento,
+    ObservacionVigente,
+    ReservaVista,
+} from '@/types';
 
 const props = defineProps<{
     reserva: ReservaVista;
     puede: { editar: boolean };
     acciones: AccionFlujo[];
     traslapes: string[];
+    advertencias: AdvertenciaRequerimiento[];
+    observacionVigente: ObservacionVigente | null;
 }>();
+
+// Título, ícono y color del recuadro según el tipo de la observación vigente.
+const estiloObservacion: Record<
+    ObservacionVigente['tipo'],
+    { titulo: string; icono: Component; clases: string }
+> = {
+    correccion_solicitada: {
+        titulo: 'Corrección solicitada',
+        icono: TriangleAlert,
+        clases: 'border-orange-200 bg-orange-50 text-orange-900',
+    },
+    autorizada: {
+        titulo: 'Reserva autorizada',
+        icono: CircleCheck,
+        clases: 'border-green-200 bg-green-50 text-green-900',
+    },
+    denegada: {
+        titulo: 'Reserva denegada',
+        icono: CircleX,
+        clases: 'border-red-200 bg-red-50 text-red-900',
+    },
+};
+
+// Autor, rol y fecha disponibles (en registros antiguos pueden faltar: no se inventan).
+const autoriaObservacion = computed(() =>
+    props.observacionVigente
+        ? [props.observacionVigente.autor, props.observacionVigente.rol]
+              .filter(Boolean)
+              .join(' · ')
+        : '',
+);
+
+// Bloques con requerimientos que el catálogo ya no respalda (para marcarlos en la lista).
+const bloquesConAdvertencia = computed(
+    () => new Set(props.advertencias.map((a) => a.detalle_id)),
+);
 
 defineOptions({
     layout: {
@@ -215,13 +258,67 @@ const varianteBoton = (accion: AccionFlujo) =>
         </div>
 
         <div
-            v-if="reserva.observaciones_admin"
-            class="rounded-md border border-orange-200 bg-orange-50 p-4 text-sm text-orange-900"
+            v-if="advertencias.length"
+            class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
         >
-            <p class="font-medium">Última observación</p>
-            <p class="mt-1 whitespace-pre-line">
-                {{ reserva.observaciones_admin }}
-            </p>
+            <TriangleAlert class="mt-0.5 size-4 shrink-0" />
+            <div>
+                <p class="font-medium">
+                    Requerimientos que ya no están disponibles
+                </p>
+                <ul class="mt-1 list-disc pl-5">
+                    <li
+                        v-for="advertencia in advertencias"
+                        :key="advertencia.mensaje"
+                    >
+                        {{ advertencia.mensaje }}
+                    </li>
+                </ul>
+                <p class="mt-1">
+                    No se podrá enviar ni aprobar hasta ajustar los
+                    requerimientos.
+                </p>
+            </div>
+        </div>
+
+        <div
+            v-if="observacionVigente"
+            class="flex gap-3 rounded-md border p-4 text-sm"
+            :class="estiloObservacion[observacionVigente.tipo].clases"
+        >
+            <component
+                :is="estiloObservacion[observacionVigente.tipo].icono"
+                class="mt-0.5 size-4 shrink-0"
+            />
+            <div class="min-w-0 flex-1">
+                <div
+                    class="flex flex-wrap items-baseline justify-between gap-x-3"
+                >
+                    <p class="font-medium">
+                        {{ estiloObservacion[observacionVigente.tipo].titulo }}
+                    </p>
+                    <time
+                        v-if="observacionVigente.fecha"
+                        :datetime="observacionVigente.fecha"
+                        class="text-xs opacity-80"
+                        >{{
+                            formatearFechaHora(observacionVigente.fecha)
+                        }}</time
+                    >
+                </div>
+                <p v-if="autoriaObservacion" class="text-xs opacity-80">
+                    {{ autoriaObservacion }}
+                </p>
+                <p
+                    v-if="observacionVigente.comentario?.trim()"
+                    class="mt-1 whitespace-pre-line"
+                >
+                    {{ observacionVigente.comentario }}
+                </p>
+                <p v-else class="mt-1 italic opacity-70">
+                    Sin observaciones adicionales.
+                </p>
+            </div>
         </div>
 
         <TarjetaSeccion titulo="Datos generales">
@@ -298,6 +395,15 @@ const varianteBoton = (accion: AccionFlujo) =>
                         {{ detalle.estado_detalle ?? 'pendiente' }}
                     </div>
                     <div
+                        v-if="detalle.lugar_especifico?.trim()"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        <span class="font-medium text-foreground"
+                            >Lugar específico:</span
+                        >
+                        {{ detalle.lugar_especifico }}
+                    </div>
+                    <div
                         v-if="detalle.cantidad_alumnos"
                         class="text-muted-foreground md:col-span-4"
                     >
@@ -322,6 +428,26 @@ const varianteBoton = (accion: AccionFlujo) =>
                                 .map((r) => `${r.nombre} (${r.cantidad})`)
                                 .join(', ')
                         }}
+                    </div>
+                    <div
+                        v-if="
+                            detalle.id !== null &&
+                            bloquesConAdvertencia.has(detalle.id)
+                        "
+                        class="text-amber-700 md:col-span-4"
+                    >
+                        Revisa los requerimientos de este espacio.
+                    </div>
+                    <div
+                        v-if="detalle.descripcion_actividad?.trim()"
+                        class="text-muted-foreground md:col-span-4"
+                    >
+                        <span class="font-medium text-foreground"
+                            >Descripción de la actividad:</span
+                        >
+                        <p class="whitespace-pre-line">
+                            {{ detalle.descripcion_actividad }}
+                        </p>
                     </div>
                     <div
                         v-if="detalle.material_requerido"

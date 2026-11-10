@@ -78,8 +78,12 @@ class ReservaController extends Controller
             'detalles.espacio:id,nombre,ubicacion,capacidad',
             'detalles.docenteResponsable:id,nombre,apellido_paterno,apellido_materno',
             'detalles.requerimientosPedidos.requerimiento:id,nombre',
-            'historial.usuario:id,nombre,apellido_paterno,apellido_materno',
+            'historial.usuario:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'historial.usuario.rol:id,nombre',
         ]);
+
+        $acciones = $this->workflow->disponibles($reserva, $user);
+        $puedeEditar = $user->can('update', $reserva);
 
         return Inertia::render('reservas/Show', [
             'reserva' => [
@@ -111,13 +115,28 @@ class ReservaController extends Controller
                     'fecha' => $registro->fecha?->toIso8601String(),
                 ]),
             ],
+            // La corrección o decisión que sigue vigente según el estado actual (el resto queda en la línea de tiempo).
+            'observacionVigente' => $this->observacionVigente($reserva),
             'puede' => [
-                'editar' => $user->can('update', $reserva),
+                'editar' => $puedeEditar,
             ],
-            'acciones' => $this->workflow->disponibles($reserva, $user),
+            'acciones' => $acciones,
             // Al decidir, administración ve de antemano los choques que bloquearían la autorización.
-            'traslapes' => $user->can('autorizar', $reserva) || $user->can('revisar', $reserva)
-                ? $this->workflow->traslapes($reserva)
+            'traslapes' => match (true) {
+                $user->can('autorizar', $reserva) || $user->can('revisar', $reserva) => $this->workflow->traslapes($reserva, $user),
+                // La creadora ve los choques de su solicitud mientras sigue en curso, sin folios ni datos de reservas ajenas.
+                $reserva->usuario_creador_id === $user->id && $reserva->enEstado(
+                    EstadoReserva::BORRADOR,
+                    EstadoReserva::CORRECCION,
+                    EstadoReserva::PENDIENTE_COORDINADOR,
+                    EstadoReserva::PENDIENTE_ADMIN,
+                ) => $this->disponibilidad->traslapesVisibles($reserva, $user),
+                default => [],
+            },
+            // Requerimientos que el catálogo ya no respalda: solo para quien puede actuar ahora
+            // (la creadora en borrador o corrección, coordinación al revisar, administración al autorizar).
+            'advertencias' => $puedeEditar || $acciones !== []
+                ? $this->workflow->advertenciasRequerimientos($reserva)
                 : [],
         ]);
     }
@@ -217,6 +236,62 @@ class ReservaController extends Controller
             'limite_max_usuarios' => $reserva->limite_max_usuarios,
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
             'estado_id' => $reserva->estado_id,
+        ];
+    }
+
+    /**
+     * Observación o decisión vigente según el estado ACTUAL: la última corrección solicitada
+     * si está en corrección, la autorización si está autorizada o la denegación si está
+     * denegada. En cualquier otro estado no hay ninguna vigente (una corrección ya atendida
+     * o un comentario de aprobación solo se ven en la línea de tiempo). Usa el historial ya
+     * cargado y no escribe nada.
+     *
+     * @return array{tipo: string, comentario: string|null, autor: string|null, rol: string|null, fecha: string|null}|null
+     */
+    private function observacionVigente(Reserva $reserva): ?array
+    {
+        $tipo = match ($reserva->estado_id) {
+            EstadoReserva::CORRECCION => HistorialReserva::CORRECCION_SOLICITADA,
+            EstadoReserva::AUTORIZADA => HistorialReserva::AUTORIZADA,
+            EstadoReserva::DENEGADA => HistorialReserva::DENEGADA,
+            default => null,
+        };
+
+        if ($tipo === null) {
+            return null;
+        }
+
+        // La más reciente de ese tipo, desempatando por id para que el resultado sea determinista.
+        $registro = $reserva->historial
+            ->filter(fn (HistorialReserva $h): bool => $h->accion === $tipo)
+            ->sortBy([
+                fn (HistorialReserva $a, HistorialReserva $b): int => ($a->fecha?->getTimestamp() ?? 0) <=> ($b->fecha?->getTimestamp() ?? 0),
+                fn (HistorialReserva $a, HistorialReserva $b): int => $a->id <=> $b->id,
+            ])
+            ->last();
+
+        if ($registro === null) {
+            // Registros antiguos sin historial: solo el texto guardado, sin inventar autor ni fecha.
+            return trim((string) $reserva->observaciones_admin) === '' ? null : [
+                'tipo' => $tipo,
+                'comentario' => $reserva->observaciones_admin,
+                'autor' => null,
+                'rol' => null,
+                'fecha' => null,
+            ];
+        }
+
+        return [
+            'tipo' => $tipo,
+            'comentario' => $registro->comentario,
+            'autor' => $registro->usuario->name,
+            'rol' => match ($registro->usuario->rol?->nombre) {
+                Rol::ADMIN, Rol::SUPERADMIN => 'Administración',
+                Rol::COORDINADOR => 'Coordinación',
+                Rol::DOCENTE => 'Docente',
+                default => null,
+            },
+            'fecha' => $registro->fecha?->toIso8601String(),
         ];
     }
 
