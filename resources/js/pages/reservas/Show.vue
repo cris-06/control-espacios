@@ -8,6 +8,7 @@ import {
     Clock,
     FilePlus,
     Pencil,
+    Printer,
     Send,
     TriangleAlert,
 } from '@lucide/vue';
@@ -34,7 +35,7 @@ import {
     formatearFecha,
     formatearFechaHora,
 } from '@/lib/reservas';
-import { edit, transicion } from '@/routes/reservas';
+import { edit, imprimir, transicion } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
     AccionFlujo,
@@ -246,6 +247,17 @@ const varianteBoton = (accion: AccionFlujo) =>
                     :estado-id="reserva.estado.id"
                     :estado="reserva.estado.nombre"
                 />
+                <!-- Versión imprimible del Formato 10 (página aparte, sin la aplicación alrededor). -->
+                <Button variant="outline" as-child>
+                    <a
+                        :href="imprimir.url(reserva.id)"
+                        target="_blank"
+                        rel="noopener"
+                    >
+                        <Printer class="size-4" />
+                        Imprimir / Guardar PDF
+                    </a>
+                </Button>
                 <Button v-if="puede.editar" variant="outline" as-child>
                     <Link :href="edit(reserva.id)">
                         <Pencil class="size-4" />
