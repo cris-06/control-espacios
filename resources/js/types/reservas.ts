@@ -152,6 +152,9 @@ export type ReservaFormulario = {
     promocion_redes: 'si' | 'no' | null;
     limite_min_usuarios: number | null;
     limite_max_usuarios: number | null;
+    // Fechas automáticas del servidor (solo lectura): elaboración al crear (ISO 8601)
+    // y entrega al primer envío (AAAA-MM-DD, null mientras no se envíe).
+    fecha_creacion: string | null;
     fecha_entrega_formato: string | null;
     estado_id: number;
     detalles: DetalleFormulario[];
@@ -194,6 +197,17 @@ export type ObservacionVigente = {
     tipo: 'correccion_solicitada' | 'autorizada' | 'denegada';
     comentario: string | null;
     autor: string | null;
+    rol: string | null;
+    fecha: string | null;
+};
+
+// Casilla de «Autorizaciones» del Formato 10, derivada del estado y del historial.
+export type CasillaAutorizacion = {
+    clave: 'docente' | 'coordinacion' | 'administracion';
+    titulo: string;
+    situacion: 'completada' | 'pendiente' | 'devuelta' | 'denegada';
+    etiqueta: string;
+    nombre: string | null;
     rol: string | null;
     fecha: string | null;
 };

@@ -2,19 +2,22 @@
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { Plus, Send } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
 import BloqueReserva from '@/components/BloqueReserva.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
+import EncabezadoFormato from '@/components/EncabezadoFormato.vue';
 import InputError from '@/components/InputError.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
 import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { aMinutos } from '@/lib/reservas';
+import { aMinutos, formatearFecha } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
+    CasillaAutorizacion,
     DetalleEditable,
     OpcionesReserva,
     ReservaFormulario,
@@ -25,7 +28,43 @@ const props = defineProps<{
     opciones: OpcionesReserva;
     // Etiqueta de «Guardar y enviar», o null si quien edita no puede enviarla ahora.
     envio: string | null;
+    // Casillas de firma generadas por el flujo (solo al editar; una reserva nueva aún no tiene).
+    autorizaciones?: CasillaAutorizacion[];
 }>();
+
+// Una reserva nueva todavía no tiene decisiones: las tres casillas quedan pendientes.
+const casillasAutorizacion = computed<CasillaAutorizacion[]>(
+    () =>
+        props.autorizaciones ?? [
+            {
+                clave: 'docente',
+                titulo: 'Docente responsable',
+                situacion: 'pendiente',
+                etiqueta: 'En elaboración, sin enviar',
+                nombre: page.props.auth.user.name,
+                rol: null,
+                fecha: null,
+            },
+            {
+                clave: 'coordinacion',
+                titulo: 'Coordinación',
+                situacion: 'pendiente',
+                etiqueta: 'Pendiente',
+                nombre: null,
+                rol: null,
+                fecha: null,
+            },
+            {
+                clave: 'administracion',
+                titulo: 'Autorización',
+                situacion: 'pendiente',
+                etiqueta: 'Pendiente',
+                nombre: null,
+                rol: null,
+                fecha: null,
+            },
+        ],
+);
 
 const page = usePage();
 
@@ -89,7 +128,7 @@ const form = useForm({
     limite_max_usuarios: (props.reserva?.limite_max_usuarios ?? '') as
         | number
         | '',
-    fecha_entrega_formato: props.reserva?.fecha_entrega_formato ?? '',
+    // folio, fecha_creacion y fecha_entrega_formato no se envían: los fija el servidor.
     detalles: (props.reserva?.detalles ?? []).map((d): DetalleEditable => ({
         ...d,
         espacio_id: aTexto(d.espacio_id),
@@ -163,6 +202,45 @@ const traslapesInternos = computed(() =>
     ),
 );
 
+// Resumen de lo pedido en cada espacio (se captura dentro de cada bloque; aquí solo se lee).
+const resumenRequerimientos = computed(() =>
+    form.detalles.flatMap((d, i) => {
+        const espacio = props.opciones.espacios.find(
+            (e) => String(e.id) === d.espacio_id,
+        );
+
+        if (!espacio) {
+            return [];
+        }
+
+        return [
+            {
+                clave: claves.value[i],
+                bloque: i + 1,
+                espacio: espacio.nombre,
+                // Fecha y horario unidos solo con lo que ya se capturó (sin separadores sueltos).
+                cuando: [
+                    d.fecha ? formatearFecha(d.fecha) : '',
+                    d.hora_inicio && d.hora_fin
+                        ? `${d.hora_inicio} – ${d.hora_fin}`
+                        : '',
+                ]
+                    .filter(Boolean)
+                    .join(' · '),
+                requerimientos: d.requerimientos.map((r) => {
+                    const nombre =
+                        espacio.requerimientos.find(
+                            (c) => c.id === r.requerimiento_id,
+                        )?.nombre ?? 'Requerimiento';
+
+                    return `${nombre} (${r.cantidad})`;
+                }),
+                material: d.material_requerido?.trim() ?? '',
+            },
+        ];
+    }),
+);
+
 const guardar = (enviar = false) => {
     const opciones = { preserveScroll: true };
 
@@ -217,32 +295,36 @@ const textarea =
         </div>
 
         <form class="grid gap-6" @submit.prevent="guardar()">
+            <!-- Encabezado institucional: folio y fechas automáticas (solo lectura). -->
+            <EncabezadoFormato
+                :folio="reserva?.folio ?? null"
+                :fecha-creacion="reserva?.fecha_creacion ?? null"
+                :fecha-entrega="reserva?.fecha_entrega_formato ?? null"
+                :estado-id="reserva?.estado_id ?? null"
+            />
+
+            <TarjetaSeccion titulo="Indicaciones">
+                <ol
+                    class="grid list-decimal gap-1 py-4 pr-4 pl-9 text-sm text-muted-foreground md:py-6 md:pr-6 md:pl-11"
+                >
+                    <li>
+                        Puedes guardar la solicitud como borrador y completarla
+                        después.
+                    </li>
+                    <li>
+                        Envíala con al menos 10 días de anticipación a la
+                        actividad.
+                    </li>
+                    <li>
+                        El folio y las fechas de elaboración y entrega los
+                        asigna el sistema; las autorizaciones de coordinación y
+                        administración se registran en el sistema.
+                    </li>
+                </ol>
+            </TarjetaSeccion>
+
             <TarjetaSeccion titulo="Datos generales">
                 <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
-                    <CampoFormulario
-                        id="licenciatura_id"
-                        etiqueta="Licenciatura"
-                        :error="form.errors.licenciatura_id"
-                    >
-                        <CampoSelect
-                            id="licenciatura_id"
-                            v-model="form.licenciatura_id"
-                            :opciones="opciones.licenciaturas"
-                            vacio="Selecciona una licenciatura"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="actividad_id"
-                        etiqueta="Tipo de actividad"
-                        :error="form.errors.actividad_id"
-                    >
-                        <CampoSelect
-                            id="actividad_id"
-                            v-model="form.actividad_id"
-                            :opciones="opciones.actividades"
-                            vacio="Selecciona un tipo"
-                        />
-                    </CampoFormulario>
                     <CampoFormulario
                         id="nombre_actividad"
                         etiqueta="Nombre de la actividad"
@@ -269,6 +351,30 @@ const textarea =
                         />
                     </CampoFormulario>
                     <CampoFormulario
+                        id="licenciatura_id"
+                        etiqueta="Licenciatura"
+                        :error="form.errors.licenciatura_id"
+                    >
+                        <CampoSelect
+                            id="licenciatura_id"
+                            v-model="form.licenciatura_id"
+                            :opciones="opciones.licenciaturas"
+                            vacio="Selecciona una licenciatura"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
+                        id="actividad_id"
+                        etiqueta="Tipo de actividad"
+                        :error="form.errors.actividad_id"
+                    >
+                        <CampoSelect
+                            id="actividad_id"
+                            v-model="form.actividad_id"
+                            :opciones="opciones.actividades"
+                            vacio="Selecciona un tipo"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
                         id="cuatrimestre_id"
                         etiqueta="Cuatrimestre (opcional)"
                         :error="form.errors.cuatrimestre_id"
@@ -282,7 +388,7 @@ const textarea =
                     </CampoFormulario>
                     <CampoFormulario
                         id="asignatura_id"
-                        etiqueta="Asignatura (opcional)"
+                        etiqueta="Asignatura vinculada (opcional)"
                         :error="form.errors.asignatura_id"
                     >
                         <CampoSelect
@@ -305,68 +411,6 @@ const textarea =
                             <option value="normal">Normal</option>
                             <option value="ext">Extracurricular</option>
                         </select>
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="promocion_redes"
-                        etiqueta="¿Promoción en redes?"
-                        :error="form.errors.promocion_redes"
-                    >
-                        <select
-                            id="promocion_redes"
-                            v-model="form.promocion_redes"
-                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs md:text-sm"
-                        >
-                            <option value="no">No</option>
-                            <option value="si">Sí</option>
-                        </select>
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="costo_alumno"
-                        etiqueta="Costo por alumno (opcional)"
-                        :error="form.errors.costo_alumno"
-                    >
-                        <Input
-                            id="costo_alumno"
-                            v-model="form.costo_alumno"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="fecha_entrega_formato"
-                        etiqueta="Fecha de entrega del formato (opcional)"
-                        :error="form.errors.fecha_entrega_formato"
-                    >
-                        <Input
-                            id="fecha_entrega_formato"
-                            v-model="form.fecha_entrega_formato"
-                            type="date"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="limite_min_usuarios"
-                        etiqueta="Mínimo de participantes (opcional)"
-                        :error="form.errors.limite_min_usuarios"
-                    >
-                        <Input
-                            id="limite_min_usuarios"
-                            v-model.number="form.limite_min_usuarios"
-                            type="number"
-                            min="0"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="limite_max_usuarios"
-                        etiqueta="Máximo de participantes (opcional)"
-                        :error="form.errors.limite_max_usuarios"
-                    >
-                        <Input
-                            id="limite_max_usuarios"
-                            v-model.number="form.limite_max_usuarios"
-                            type="number"
-                            min="0"
-                        />
                     </CampoFormulario>
                 </div>
             </TarjetaSeccion>
@@ -410,6 +454,106 @@ const textarea =
                 />
                 <InputError class="px-4 pb-4" :message="form.errors.detalles" />
             </TarjetaSeccion>
+
+            <TarjetaSeccion
+                titulo="Requerimientos por espacio"
+                descripcion="Resumen de lo solicitado. Los requerimientos y el material se capturan dentro de cada espacio."
+            >
+                <p
+                    v-if="resumenRequerimientos.length === 0"
+                    class="px-4 py-6 text-center text-sm text-muted-foreground"
+                >
+                    Elige un espacio para solicitar sus requerimientos.
+                </p>
+                <ul v-else class="divide-y divide-border text-sm">
+                    <li
+                        v-for="fila in resumenRequerimientos"
+                        :key="fila.clave"
+                        class="grid gap-1 p-4 md:grid-cols-3 md:gap-4 md:px-6"
+                    >
+                        <div>
+                            <p class="font-medium">
+                                Espacio {{ fila.bloque }}: {{ fila.espacio }}
+                            </p>
+                            <p v-if="fila.cuando" class="text-muted-foreground">
+                                {{ fila.cuando }}
+                            </p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <p v-if="fila.requerimientos.length">
+                                {{ fila.requerimientos.join(', ') }}
+                            </p>
+                            <p v-else class="text-muted-foreground italic">
+                                Sin requerimientos del catálogo.
+                            </p>
+                            <p
+                                v-if="fila.material"
+                                class="whitespace-pre-line text-muted-foreground"
+                            >
+                                Material: {{ fila.material }}
+                            </p>
+                        </div>
+                    </li>
+                </ul>
+            </TarjetaSeccion>
+
+            <TarjetaSeccion titulo="Información adicional">
+                <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
+                    <CampoFormulario
+                        id="costo_alumno"
+                        etiqueta="Costo para el alumno (opcional)"
+                        :error="form.errors.costo_alumno"
+                    >
+                        <Input
+                            id="costo_alumno"
+                            v-model="form.costo_alumno"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
+                        id="promocion_redes"
+                        etiqueta="¿Promoción en redes sociales?"
+                        :error="form.errors.promocion_redes"
+                    >
+                        <select
+                            id="promocion_redes"
+                            v-model="form.promocion_redes"
+                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs md:text-sm"
+                        >
+                            <option value="no">No</option>
+                            <option value="si">Sí</option>
+                        </select>
+                    </CampoFormulario>
+                    <CampoFormulario
+                        id="limite_min_usuarios"
+                        etiqueta="Mínimo de participantes (opcional)"
+                        :error="form.errors.limite_min_usuarios"
+                    >
+                        <Input
+                            id="limite_min_usuarios"
+                            v-model.number="form.limite_min_usuarios"
+                            type="number"
+                            min="0"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
+                        id="limite_max_usuarios"
+                        etiqueta="Máximo de participantes (opcional)"
+                        :error="form.errors.limite_max_usuarios"
+                    >
+                        <Input
+                            id="limite_max_usuarios"
+                            v-model.number="form.limite_max_usuarios"
+                            type="number"
+                            min="0"
+                        />
+                    </CampoFormulario>
+                </div>
+            </TarjetaSeccion>
+
+            <AutorizacionesReserva :casillas="casillasAutorizacion" />
 
             <div class="flex flex-wrap gap-3">
                 <Button

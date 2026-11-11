@@ -96,7 +96,7 @@ class ReservaService
             'tipo_formato' => 'tipo de formato', 'cuatrimestre_id' => 'cuatrimestre',
             'asignatura_id' => 'asignatura', 'costo_alumno' => 'costo por alumno',
             'promocion_redes' => 'promoción en redes', 'limite_min_usuarios' => 'mínimo de participantes',
-            'limite_max_usuarios' => 'máximo de participantes', 'fecha_entrega_formato' => 'fecha de entrega',
+            'limite_max_usuarios' => 'máximo de participantes',
         ];
 
         $partes = array_values(array_filter(array_map(fn (string $campo) => $etiquetas[$campo] ?? null, $campos)));

@@ -13,6 +13,8 @@ import {
 } from '@lucide/vue';
 import type { Component } from 'vue';
 import { computed, ref } from 'vue';
+import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
+import EncabezadoFormato from '@/components/EncabezadoFormato.vue';
 import EstadoBadge from '@/components/EstadoBadge.vue';
 import InputError from '@/components/InputError.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
@@ -33,6 +35,7 @@ import { index as solicitudes } from '@/routes/solicitudes';
 import type {
     AccionFlujo,
     AdvertenciaRequerimiento,
+    CasillaAutorizacion,
     ObservacionVigente,
     ReservaVista,
 } from '@/types';
@@ -44,7 +47,35 @@ const props = defineProps<{
     traslapes: string[];
     advertencias: AdvertenciaRequerimiento[];
     observacionVigente: ObservacionVigente | null;
+    autorizaciones: CasillaAutorizacion[];
 }>();
+
+// «Información adicional» del Formato 10 (costo, promoción y cupo de participantes).
+const costo = computed(() => {
+    const valor = Number(props.reserva.costo_alumno ?? 0);
+
+    return valor > 0
+        ? new Intl.NumberFormat('es-MX', {
+              style: 'currency',
+              currency: 'MXN',
+          }).format(valor)
+        : 'Sin costo';
+});
+
+const participantes = computed(() => {
+    const { limite_min_usuarios: min, limite_max_usuarios: max } =
+        props.reserva;
+
+    if (min !== null && max !== null) {
+        return `De ${min} a ${max}`;
+    }
+
+    if (min !== null) {
+        return `Mínimo ${min}`;
+    }
+
+    return max !== null ? `Máximo ${max}` : 'Sin límite indicado';
+});
 
 // Título, ícono y color del recuadro según el tipo de la observación vigente.
 const estiloObservacion: Record<
@@ -228,6 +259,13 @@ const varianteBoton = (accion: AccionFlujo) =>
             </div>
         </template>
 
+        <EncabezadoFormato
+            :folio="reserva.folio"
+            :fecha-creacion="reserva.fecha_creacion"
+            :fecha-entrega="reserva.fecha_entrega_formato"
+            :estado-id="reserva.estado.id"
+        />
+
         <div
             v-if="erroresFlujo.length"
             class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
@@ -323,6 +361,12 @@ const varianteBoton = (accion: AccionFlujo) =>
 
         <TarjetaSeccion titulo="Datos generales">
             <dl class="grid gap-4 p-4 text-sm sm:grid-cols-2 md:p-6">
+                <div v-if="reserva.nombre_actividad" class="sm:col-span-2">
+                    <dt class="text-muted-foreground">
+                        Nombre de la actividad
+                    </dt>
+                    <dd class="font-medium">{{ reserva.nombre_actividad }}</dd>
+                </div>
                 <div>
                     <dt class="text-muted-foreground">Solicitante</dt>
                     <dd class="font-medium">{{ reserva.creador }}</dd>
@@ -346,8 +390,18 @@ const varianteBoton = (accion: AccionFlujo) =>
                     <dd class="font-medium">{{ reserva.cuatrimestre }}</dd>
                 </div>
                 <div v-if="reserva.asignatura">
-                    <dt class="text-muted-foreground">Asignatura</dt>
+                    <dt class="text-muted-foreground">Asignatura vinculada</dt>
                     <dd class="font-medium">{{ reserva.asignatura }}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Tipo de formato</dt>
+                    <dd class="font-medium">
+                        {{
+                            reserva.tipo_formato === 'ext'
+                                ? 'Extracurricular'
+                                : 'Normal'
+                        }}
+                    </dd>
                 </div>
                 <div class="sm:col-span-2">
                     <dt class="text-muted-foreground">Objetivo</dt>
@@ -458,6 +512,29 @@ const varianteBoton = (accion: AccionFlujo) =>
                 </li>
             </ul>
         </TarjetaSeccion>
+
+        <TarjetaSeccion titulo="Información adicional">
+            <dl class="grid gap-4 p-4 text-sm sm:grid-cols-3 md:p-6">
+                <div>
+                    <dt class="text-muted-foreground">Costo para el alumno</dt>
+                    <dd class="font-medium">{{ costo }}</dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">
+                        Promoción en redes sociales
+                    </dt>
+                    <dd class="font-medium">
+                        {{ reserva.promocion_redes === 'si' ? 'Sí' : 'No' }}
+                    </dd>
+                </div>
+                <div>
+                    <dt class="text-muted-foreground">Participantes</dt>
+                    <dd class="font-medium">{{ participantes }}</dd>
+                </div>
+            </dl>
+        </TarjetaSeccion>
+
+        <AutorizacionesReserva :casillas="autorizaciones" />
 
         <TarjetaSeccion
             titulo="Línea de tiempo"

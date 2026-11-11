@@ -70,6 +70,8 @@ class ReservaController extends Controller
         $reserva->load([
             'creador:id,nombre,apellido_paterno,apellido_materno,correo,rol_id',
             'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador.rol:id,nombre',
             'licenciatura:id,nombre',
             'actividad:id,nombre',
             'cuatrimestre:id,nombre',
@@ -117,6 +119,8 @@ class ReservaController extends Controller
             ],
             // La corrección o decisión que sigue vigente según el estado actual (el resto queda en la línea de tiempo).
             'observacionVigente' => $this->observacionVigente($reserva),
+            // Casillas de firma del Formato 10, generadas por el flujo (nunca capturadas a mano).
+            'autorizaciones' => $this->autorizaciones($reserva),
             'puede' => [
                 'editar' => $puedeEditar,
             ],
@@ -145,7 +149,15 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $reserva->load('detalles.requerimientosPedidos');
+        $reserva->load([
+            'detalles.requerimientosPedidos',
+            'creador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'coordinador.rol:id,nombre',
+            'historial.usuario:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'historial.usuario.rol:id,nombre',
+        ]);
 
         return Inertia::render('reservas/Form', [
             'reserva' => [
@@ -155,6 +167,8 @@ class ReservaController extends Controller
             ],
             'opciones' => $this->opciones($request->user()),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
+            // Solo lectura: las mismas casillas que el detalle, generadas por el flujo.
+            'autorizaciones' => $this->autorizaciones($reserva),
         ]);
     }
 
@@ -234,9 +248,92 @@ class ReservaController extends Controller
             'promocion_redes' => $reserva->promocion_redes,
             'limite_min_usuarios' => $reserva->limite_min_usuarios,
             'limite_max_usuarios' => $reserva->limite_max_usuarios,
+            // Fechas automáticas (solo lectura): elaboración al crear; entrega al primer envío.
+            'fecha_creacion' => $reserva->fecha_creacion?->toIso8601String(),
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
             'estado_id' => $reserva->estado_id,
         ];
+    }
+
+    /**
+     * Las tres casillas de «Autorizaciones» del Formato 10 (docente responsable, coordinación
+     * y administración), derivadas SOLO del estado actual y del historial ya cargado: nadie
+     * las escribe. Solo cuenta lo ocurrido después de la última corrección solicitada, así
+     * una aprobación anterior a una devolución nunca aparece como vigente. No escribe nada.
+     *
+     * @return list<array{clave: string, titulo: string, situacion: string, etiqueta: string, nombre: string|null, rol: string|null, fecha: string|null}>
+     */
+    private function autorizaciones(Reserva $reserva): array
+    {
+        $historial = $reserva->historial
+            ->sortBy([
+                fn (HistorialReserva $a, HistorialReserva $b): int => ($a->fecha?->getTimestamp() ?? 0) <=> ($b->fecha?->getTimestamp() ?? 0),
+                fn (HistorialReserva $a, HistorialReserva $b): int => $a->id <=> $b->id,
+            ])
+            ->values();
+
+        // Ciclo vigente: lo posterior a la última corrección solicitada (o todo, si nunca hubo).
+        $ultimaCorreccion = $historial->last(fn (HistorialReserva $h): bool => $h->accion === HistorialReserva::CORRECCION_SOLICITADA);
+        $ciclo = $ultimaCorreccion === null
+            ? $historial
+            : $historial->slice((int) $historial->search(fn (HistorialReserva $h): bool => $h->id === $ultimaCorreccion->id) + 1);
+        $ultimo = fn (string ...$acciones): ?HistorialReserva => $ciclo->last(fn (HistorialReserva $h): bool => in_array($h->accion, $acciones, true));
+
+        $rolDe = fn (?User $u): ?string => match ($u?->rol?->nombre) {
+            Rol::ADMIN, Rol::SUPERADMIN => 'Administración',
+            Rol::COORDINADOR => 'Coordinación',
+            Rol::DOCENTE => 'Docente',
+            default => null,
+        };
+        $casilla = fn (string $clave, string $titulo, string $situacion, string $etiqueta, ?HistorialReserva $registro = null, ?User $usuario = null): array => [
+            'clave' => $clave,
+            'titulo' => $titulo,
+            'situacion' => $situacion,
+            'etiqueta' => $etiqueta,
+            'nombre' => ($registro->usuario ?? $usuario)?->name,
+            'rol' => $rolDe($registro->usuario ?? $usuario),
+            'fecha' => $registro?->fecha?->toIso8601String(),
+        ];
+
+        $estado = $reserva->estado_id;
+        $decidida = in_array($estado, [EstadoReserva::PENDIENTE_ADMIN, EstadoReserva::AUTORIZADA, EstadoReserva::DENEGADA], true);
+        $devueltaPor = fn (string $rol): ?HistorialReserva => $estado === EstadoReserva::CORRECCION
+            && $ultimaCorreccion !== null
+            && $rolDe($ultimaCorreccion->usuario) === $rol ? $ultimaCorreccion : null;
+
+        // 1. Docente responsable (quien elaboró y entregó la solicitud).
+        $envio = $ultimo(HistorialReserva::ENVIADA_COORDINADOR, HistorialReserva::ENVIADA_ADMIN);
+        $docente = match (true) {
+            $estado === EstadoReserva::BORRADOR => $casilla('docente', 'Docente responsable', 'pendiente', 'En elaboración, sin enviar', usuario: $reserva->creador),
+            $estado === EstadoReserva::CORRECCION => $casilla('docente', 'Docente responsable', 'pendiente', 'Debe atender la corrección y reenviar', usuario: $reserva->creador),
+            default => $casilla('docente', 'Docente responsable', 'completada', 'Entregó la solicitud', $envio, $reserva->creador),
+        };
+
+        // 2. Coordinación: aprobación vigente o envío directo de una solicitud propia.
+        $aprobacion = $decidida ? $ultimo(HistorialReserva::APROBADA_COORDINADOR, HistorialReserva::ENVIADA_ADMIN) : null;
+        $coordinacion = match (true) {
+            $aprobacion !== null => $casilla(
+                'coordinacion', 'Coordinación', 'completada',
+                $aprobacion->accion === HistorialReserva::ENVIADA_ADMIN ? 'Solicitud propia enviada a administración' : 'Aprobada por coordinación',
+                $aprobacion,
+            ),
+            $devueltaPor('Coordinación') !== null => $casilla('coordinacion', 'Coordinación', 'devuelta', 'Solicitó corrección', $devueltaPor('Coordinación')),
+            $estado === EstadoReserva::PENDIENTE_COORDINADOR => $casilla('coordinacion', 'Coordinación', 'pendiente', 'En revisión', usuario: $reserva->coordinador),
+            default => $casilla('coordinacion', 'Coordinación', 'pendiente', 'Pendiente', usuario: $reserva->coordinador),
+        };
+
+        // 3. Administración: la decisión final o su devolución.
+        $administracion = match (true) {
+            $estado === EstadoReserva::AUTORIZADA && ($r = $ultimo(HistorialReserva::AUTORIZADA)) !== null => $casilla('administracion', 'Autorización', 'completada', 'Autorizada', $r),
+            $estado === EstadoReserva::DENEGADA && ($r = $ultimo(HistorialReserva::DENEGADA)) !== null => $casilla('administracion', 'Autorización', 'denegada', 'Denegada', $r),
+            $devueltaPor('Administración') !== null => $casilla('administracion', 'Autorización', 'devuelta', 'Solicitó corrección', $devueltaPor('Administración')),
+            $estado === EstadoReserva::PENDIENTE_ADMIN => $casilla('administracion', 'Autorización', 'pendiente', 'En revisión por administración'),
+            $estado === EstadoReserva::AUTORIZADA => $casilla('administracion', 'Autorización', 'completada', 'Autorizada'),
+            $estado === EstadoReserva::DENEGADA => $casilla('administracion', 'Autorización', 'denegada', 'Denegada'),
+            default => $casilla('administracion', 'Autorización', 'pendiente', 'Pendiente'),
+        };
+
+        return [$docente, $coordinacion, $administracion];
     }
 
     /**

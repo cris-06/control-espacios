@@ -67,7 +67,8 @@ class ReservaRequest extends FormRequest
             'promocion_redes' => ['nullable', Rule::in(['si', 'no'])],
             'limite_min_usuarios' => ['nullable', 'integer', 'min:0'],
             'limite_max_usuarios' => ['nullable', 'integer', 'min:0', 'gte:limite_min_usuarios'],
-            'fecha_entrega_formato' => ['nullable', 'date_format:Y-m-d'],
+            // Sin reglas para folio, fecha_creacion ni fecha_entrega_formato: las asigna el servidor
+            // (al crear y al primer envío) y, al no validarse, nunca llegan a safe()/datosReserva().
 
             'detalles' => ['array', 'max:20'],
             'detalles.*.id' => ['nullable', 'integer', Rule::in($detallesExistentes)],

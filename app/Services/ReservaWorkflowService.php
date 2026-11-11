@@ -110,6 +110,10 @@ class ReservaWorkflowService
 
             if ($transicion['permiso'] === 'enviar') {
                 $this->asignarCoordinador($actual);
+                // Fecha de entrega del formato: la del PRIMER envío (a coordinación o, si la creó
+                // coordinación, a administración). Un reenvío tras corrección la conserva. Se guarda
+                // con el save() de esta transacción: si el envío se rechaza, no queda nada.
+                $actual->fecha_entrega_formato ??= Date::today();
             }
 
             if ($transicion['estricta']) {

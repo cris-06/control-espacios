@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\ReservaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Carbon;
 
 /**
  * Reserva (tabla `reservas`). Los cambios de estado se hacen SOLO con
@@ -31,7 +31,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $promocion_redes
  * @property int|null $limite_min_usuarios
  * @property int|null $limite_max_usuarios
- * @property Carbon|null $fecha_entrega_formato
+ * @property CarbonInterface|null $fecha_entrega_formato
+ * @property CarbonInterface|null $fecha_creacion
+ * @property CarbonInterface|null $fecha_actualizacion
  */
 class Reserva extends Model
 {
@@ -44,10 +46,12 @@ class Reserva extends Model
 
     protected $table = 'reservas';
 
+    // folio, fecha_creacion y fecha_entrega_formato no son asignables: las fija el servidor
+    // (ReservaService::crear y el primer envío en ReservaWorkflowService::ejecutar).
     protected $fillable = [
         'actividad_id', 'licenciatura_id', 'tipo_formato', 'nombre_actividad', 'objetivo',
         'cuatrimestre_id', 'asignatura_id', 'costo_alumno', 'promocion_redes',
-        'limite_min_usuarios', 'limite_max_usuarios', 'fecha_entrega_formato',
+        'limite_min_usuarios', 'limite_max_usuarios',
     ];
 
     protected $attributes = [
