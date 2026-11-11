@@ -30,7 +30,7 @@ class LicenciaturaController extends Controller
                     'usuarios as docentes_count' => fn (Builder $q) => $q->whereHas('rol', fn (Builder $r) => $r->where('nombre', Rol::DOCENTE)),
                 ])
                 ->orderBy('nombre')
-                ->get(['id', 'nombre', 'estatus']),
+                ->get(['id', 'nombre', 'siglas', 'estatus']),
         ]);
     }
 
@@ -71,18 +71,32 @@ class LicenciaturaController extends Controller
     }
 
     /**
-     * @return array{nombre: string}
+     * Las siglas son opcionales: si la petición no las trae, no se tocan; vacías = sin siglas.
+     * Se normalizan (sin espacios a los lados y en mayúsculas) ANTES de validar la unicidad.
+     * Cambiarlas solo afecta a las reservas que se creen después: los folios ya generados no cambian.
+     *
+     * @return array{nombre: string, siglas?: string|null}
      */
     private function validar(Request $request, ?Licenciatura $licenciatura = null): array
     {
         $request->merge(['nombre' => trim((string) $request->input('nombre'))]);
 
-        /** @var array{nombre: string} */
+        if ($request->exists('siglas')) {
+            $siglas = $request->input('siglas');
+            $siglas = is_string($siglas) ? mb_strtoupper(trim($siglas)) : $siglas;
+            $request->merge(['siglas' => $siglas === '' ? null : $siglas]);
+        }
+
+        /** @var array{nombre: string, siglas?: string|null} */
         return $request->validate([
             'nombre' => ['required', 'string', 'max:100', Rule::unique('licenciaturas', 'nombre')->ignore($licenciatura?->id)],
+            'siglas' => ['sometimes', 'nullable', 'string', 'regex:'.Licenciatura::PATRON_SIGLAS, Rule::unique('licenciaturas', 'siglas')->ignore($licenciatura?->id)],
         ], [
             'nombre.required' => 'Escribe el nombre de la licenciatura.',
             'nombre.unique' => 'Ya existe una licenciatura con ese nombre.',
+            'siglas.string' => 'Las siglas deben ser texto.',
+            'siglas.regex' => 'Las siglas deben tener de 2 a 10 letras (A-Z), sin espacios, números ni acentos.',
+            'siglas.unique' => 'Otra licenciatura ya usa esas siglas.',
         ]);
     }
 }

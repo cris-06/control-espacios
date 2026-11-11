@@ -90,3 +90,11 @@ export function haceCuanto(fechaIso: string): string {
 export function formatearFechaHora(fechaIso: string): string {
     return formatoFechaHora.format(new Date(fechaIso));
 }
+
+// Folio que se muestra al usuario: el institucional del Formato 10 si existe; si no, el interno RES.
+export function folioVisible(reserva: {
+    folio: string | null;
+    folio_institucional?: string | null;
+}): string | null {
+    return reserva.folio_institucional || reserva.folio;
+}

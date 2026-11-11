@@ -21,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property int $licenciatura_id
  * @property string|null $nombre_actividad
  * @property string|null $folio
+ * @property string|null $folio_institucional
  * @property string $objetivo
  * @property int|null $cuatrimestre_id
  * @property int|null $asignatura_id
@@ -46,7 +47,7 @@ class Reserva extends Model
 
     protected $table = 'reservas';
 
-    // folio, fecha_creacion y fecha_entrega_formato no son asignables: las fija el servidor
+    // folio, folio_institucional, fecha_creacion y fecha_entrega_formato no son asignables: las fija el servidor
     // (ReservaService::crear y el primer envío en ReservaWorkflowService::ejecutar).
     protected $fillable = [
         'actividad_id', 'licenciatura_id', 'tipo_formato', 'nombre_actividad', 'objetivo',
@@ -221,5 +222,14 @@ class Reserva extends Model
     public static function folioPara(int $id): string
     {
         return sprintf('RES-%05d', $id);
+    }
+
+    /**
+     * Folio institucional del Formato 10: {SIGLAS}-{AAAAMMDD}-{ID}, con el id en al menos
+     * cinco dígitos (más largo no se recorta). La fecha es la de creación, en la zona del proyecto.
+     */
+    public static function folioInstitucionalPara(string $siglas, CarbonInterface $fechaCreacion, int $id): string
+    {
+        return sprintf('%s-%s-%05d', $siglas, $fechaCreacion->setTimezone(date_default_timezone_get())->format('Ymd'), $id);
     }
 }

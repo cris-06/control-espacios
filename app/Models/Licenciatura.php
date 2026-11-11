@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 /**
  * @property int $id
  * @property string $nombre
+ * @property string|null $siglas siglas oficiales (2 a 10 letras A-Z); null si aún no se registran
  * @property string|null $estatus
  */
 class Licenciatura extends Model
@@ -22,7 +23,10 @@ class Licenciatura extends Model
 
     public $timestamps = false;
 
-    protected $fillable = ['nombre', 'estatus'];
+    /** Siglas oficiales: de 2 a 10 letras mayúsculas, sin espacios ni otros signos. */
+    public const PATRON_SIGLAS = '/^[A-Z]{2,10}$/';
+
+    protected $fillable = ['nombre', 'siglas', 'estatus'];
 
     /**
      * Usuarios asignados (docentes y coordinadores) vía usuario_licenciaturas.

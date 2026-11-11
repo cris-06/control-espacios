@@ -5,8 +5,10 @@ import { formatearFecha } from '@/lib/reservas';
 // Encabezado institucional del Formato 10 (actividades o eventos). Solo muestra datos
 // que fija el servidor: el folio y las fechas automáticas nunca se capturan aquí.
 const props = defineProps<{
-    // null mientras la reserva no se ha guardado.
+    // Folio interno RES; null mientras la reserva no se ha guardado.
     folio: string | null;
+    // Folio institucional {SIGLAS}-{AAAAMMDD}-{ID}; null si la licenciatura no tenía siglas al crearla.
+    folioInstitucional?: string | null;
     // ISO 8601 (fecha_creacion) o null si aún no se guarda.
     fechaCreacion: string | null;
     // AAAA-MM-DD (fecha_entrega_formato) o null si aún no se envía.
@@ -62,7 +64,16 @@ const elaboracion = computed(() =>
                 <dt class="text-xs text-muted-foreground uppercase">
                     No. de folio
                 </dt>
-                <dd v-if="folio" class="font-semibold">{{ folio }}</dd>
+                <!-- El institucional si existe; si no, el RES. Siempre solo lectura. -->
+                <dd v-if="folioInstitucional" class="font-semibold break-all">
+                    {{ folioInstitucional }}
+                    <span
+                        v-if="folio"
+                        class="block text-xs font-normal text-muted-foreground"
+                        >Folio interno: {{ folio }}</span
+                    >
+                </dd>
+                <dd v-else-if="folio" class="font-semibold">{{ folio }}</dd>
                 <dd v-else class="text-muted-foreground italic">
                     Se asignará al guardar
                 </dd>

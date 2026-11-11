@@ -141,6 +141,8 @@ export type VerificacionDisponibilidad = {
 export type ReservaFormulario = {
     id: number;
     folio: string | null;
+    // Folio del Formato 10 ({SIGLAS}-{AAAAMMDD}-{ID}); null si la licenciatura no tenía siglas al crearla.
+    folio_institucional?: string | null;
     licenciatura_id: number;
     actividad_id: number;
     nombre_actividad: string | null;

@@ -29,7 +29,11 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
-import { formatearFecha, formatearFechaHora } from '@/lib/reservas';
+import {
+    folioVisible,
+    formatearFecha,
+    formatearFechaHora,
+} from '@/lib/reservas';
 import { edit, transicion } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
@@ -230,10 +234,10 @@ const varianteBoton = (accion: AccionFlujo) =>
 </script>
 
 <template>
-    <Head :title="`Reserva ${reserva.folio ?? ''}`" />
+    <Head :title="`Reserva ${folioVisible(reserva) ?? ''}`" />
 
     <PaginaBase
-        :titulo="`Reserva ${reserva.folio ?? ''}`"
+        :titulo="`Reserva ${folioVisible(reserva) ?? ''}`"
         :descripcion="reserva.nombre_actividad || reserva.actividad"
     >
         <template #acciones>
@@ -261,6 +265,7 @@ const varianteBoton = (accion: AccionFlujo) =>
 
         <EncabezadoFormato
             :folio="reserva.folio"
+            :folio-institucional="reserva.folio_institucional ?? null"
             :fecha-creacion="reserva.fecha_creacion"
             :fecha-entrega="reserva.fecha_entrega_formato"
             :estado-id="reserva.estado.id"

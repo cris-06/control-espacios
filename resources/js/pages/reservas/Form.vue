@@ -13,7 +13,7 @@ import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { aMinutos, formatearFecha } from '@/lib/reservas';
+import { aMinutos, folioVisible, formatearFecha } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
@@ -80,7 +80,7 @@ defineOptions({
 const esEdicion = computed(() => props.reserva !== null);
 const titulo = computed(() =>
     props.reserva
-        ? `Editar reserva ${props.reserva.folio ?? ''}`.trim()
+        ? `Editar reserva ${folioVisible(props.reserva) ?? ''}`.trim()
         : 'Nueva reserva',
 );
 
@@ -323,6 +323,7 @@ const textarea =
             <!-- Encabezado institucional: folio y fechas automáticas (solo lectura). -->
             <EncabezadoFormato
                 :folio="reserva?.folio ?? null"
+                :folio-institucional="reserva?.folio_institucional ?? null"
                 :fecha-creacion="reserva?.fecha_creacion ?? null"
                 :fecha-entrega="reserva?.fecha_entrega_formato ?? null"
                 :estado-id="reserva?.estado_id ?? null"

@@ -94,6 +94,7 @@ class ReservaController extends Controller
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'estado' => ['id' => $reserva->estado_id, 'nombre' => EstadoReserva::etiqueta($reserva->estado_id), 'descripcion' => $reserva->estado->descripcion],
                 'creador' => $reserva->creador->name,
                 'coordinador' => $reserva->coordinador?->name,
@@ -166,6 +167,7 @@ class ReservaController extends Controller
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
             ],
             'opciones' => $this->opciones($request->user()),

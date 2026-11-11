@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\HistorialReserva;
+use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\User;
@@ -40,6 +41,7 @@ class ReservaService
             $reserva->save();
 
             $reserva->folio = Reserva::folioPara($reserva->id);
+            $reserva->folio_institucional = $this->folioInstitucional($reserva);
             $reserva->save();
 
             $this->sincronizarDetalles($reserva, $detalles);
@@ -109,6 +111,26 @@ class ReservaService
 
             return $reserva;
         });
+    }
+
+    /**
+     * Folio institucional (Formato 10), una sola vez al crear y dentro de su transacción:
+     * siglas oficiales de la licenciatura + fecha de creación GUARDADA + id de la reserva.
+     * El id es único (autoincremento), así que no hace falta contador ni MAX(id)+1; el índice
+     * UNIQUE de la columna queda como protección adicional. Sin siglas válidas: null (solo RES).
+     * Nunca se recalcula: actualizar() y el flujo no lo tocan, y no es asignable en masa.
+     */
+    private function folioInstitucional(Reserva $reserva): ?string
+    {
+        $siglas = Licenciatura::query()->whereKey($reserva->licenciatura_id)->value('siglas');
+
+        if (! is_string($siglas) || preg_match(Licenciatura::PATRON_SIGLAS, $siglas) !== 1) {
+            return null;
+        }
+
+        $guardada = Reserva::query()->whereKey($reserva->id)->firstOrFail(['id', 'fecha_creacion'])->fecha_creacion;
+
+        return $guardada === null ? null : Reserva::folioInstitucionalPara($siglas, $guardada, $reserva->id);
     }
 
     /**
