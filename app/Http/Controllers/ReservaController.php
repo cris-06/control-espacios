@@ -16,6 +16,7 @@ use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
 use App\Models\Rol;
 use App\Models\User;
+use App\Services\AnticipacionReserva;
 use App\Services\DisponibilidadEspacioService;
 use App\Services\ReservaService;
 use App\Services\ReservaWorkflowService;
@@ -37,6 +38,7 @@ class ReservaController extends Controller
         private readonly ReservaService $reservas,
         private readonly ReservaWorkflowService $workflow,
         private readonly DisponibilidadEspacioService $disponibilidad,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public function create(Request $request): Response
@@ -48,6 +50,7 @@ class ReservaController extends Controller
             'opciones' => $this->opciones($request->user()),
             // Al crear aún no se sabe el destino (depende de la licenciatura elegida).
             'envio' => 'Guardar y enviar',
+            'anticipacion' => $this->anticipacion(null),
         ]);
     }
 
@@ -169,7 +172,23 @@ class ReservaController extends Controller
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
             // Solo lectura: las mismas casillas que el detalle, generadas por el flujo.
             'autorizaciones' => $this->autorizaciones($reserva),
+            'anticipacion' => $this->anticipacion($reserva),
         ]);
+    }
+
+    /**
+     * Anticipación mínima calculada con el reloj del servidor (no el del navegador). Solo
+     * informa al formulario: la regla la aplican ReservaService y ReservaWorkflowService.
+     *
+     * @return array{dias: int, fecha_minima: string, ya_enviada: bool}
+     */
+    private function anticipacion(?Reserva $reserva): array
+    {
+        return [
+            'dias' => AnticipacionReserva::DIAS,
+            'fecha_minima' => $this->anticipacion->fechaMinima()->toDateString(),
+            'ya_enviada' => $reserva !== null && $this->anticipacion->yaEnviada($reserva),
+        ];
     }
 
     public function update(ReservaRequest $request, Reserva $reserva): RedirectResponse

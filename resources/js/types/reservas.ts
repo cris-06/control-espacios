@@ -202,6 +202,14 @@ export type ObservacionVigente = {
 };
 
 // Casilla de «Autorizaciones» del Formato 10, derivada del estado y del historial.
+// Anticipación mínima del Formato 10, calculada en el servidor (fecha_minima: AAAA-MM-DD).
+// ya_enviada: tras el primer envío solo deben cumplirla los bloques nuevos o modificados.
+export type AnticipacionEnvio = {
+    dias: number;
+    fecha_minima: string;
+    ya_enviada: boolean;
+};
+
 export type CasillaAutorizacion = {
     clave: 'docente' | 'coordinacion' | 'administracion';
     titulo: string;

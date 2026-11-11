@@ -206,7 +206,7 @@ test('a coordinator editing a teacher\'s reservation is recorded with a summary'
         'detalles' => [[
             'id' => $detalle->id,
             'espacio_id' => $detalle->espacio_id,
-            'fecha' => Date::tomorrow()->toDateString(),
+            'fecha' => Date::today()->addDays(30)->toDateString(),
             'hora_inicio' => '13:00',
             'hora_fin' => '14:00',
             'cantidad_alumnos' => 15,

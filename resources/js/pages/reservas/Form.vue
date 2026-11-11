@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { Plus, Send } from '@lucide/vue';
+import { Plus, Send, TriangleAlert } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
 import BloqueReserva from '@/components/BloqueReserva.vue';
@@ -17,6 +17,7 @@ import { aMinutos, formatearFecha } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
+    AnticipacionEnvio,
     CasillaAutorizacion,
     DetalleEditable,
     OpcionesReserva,
@@ -30,6 +31,8 @@ const props = defineProps<{
     envio: string | null;
     // Casillas de firma generadas por el flujo (solo al editar; una reserva nueva aún no tiene).
     autorizaciones?: CasillaAutorizacion[];
+    // Anticipación mínima calculada por el servidor (la regla se aplica en Laravel).
+    anticipacion: AnticipacionEnvio;
 }>();
 
 // Una reserva nueva todavía no tiene decisiones: las tres casillas quedan pendientes.
@@ -202,6 +205,27 @@ const traslapesInternos = computed(() =>
     ),
 );
 
+// Anticipación (solo aviso; la valida el servidor). Antes del primer envío la deben cumplir
+// todos los bloques; después, solo los nuevos o con otro espacio, fecha u horario.
+const fechaMinima = computed(() =>
+    formatearFecha(props.anticipacion.fecha_minima),
+);
+const originales = new Map(
+    (props.reserva?.detalles ?? []).map((d) => [
+        d.id,
+        `${d.espacio_id}|${d.fecha}|${d.hora_inicio.slice(0, 5)}|${d.hora_fin.slice(0, 5)}`,
+    ]),
+);
+const debeCumplirAnticipacion = (d: DetalleEditable) =>
+    !props.anticipacion.ya_enviada ||
+    d.id === null ||
+    originales.get(d.id) !==
+        `${d.espacio_id}|${d.fecha}|${d.hora_inicio.slice(0, 5)}|${d.hora_fin.slice(0, 5)}`;
+const incumpleAnticipacion = (d: DetalleEditable) =>
+    d.fecha !== '' &&
+    d.fecha < props.anticipacion.fecha_minima &&
+    debeCumplirAnticipacion(d);
+
 // Resumen de lo pedido en cada espacio (se captura dentro de cada bloque; aquí solo se lee).
 const resumenRequerimientos = computed(() =>
     form.detalles.flatMap((d, i) => {
@@ -236,6 +260,7 @@ const resumenRequerimientos = computed(() =>
                     return `${nombre} (${r.cantidad})`;
                 }),
                 material: d.material_requerido?.trim() ?? '',
+                anticipacion: incumpleAnticipacion(d),
             },
         ];
     }),
@@ -312,8 +337,13 @@ const textarea =
                         después.
                     </li>
                     <li>
-                        Envíala con al menos 10 días de anticipación a la
-                        actividad.
+                        Envíala con al menos {{ anticipacion.dias }} días
+                        naturales de anticipación: hoy, la fecha más próxima
+                        permitida es el
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong
+                        >.
                     </li>
                     <li>
                         El folio y las fechas de elaboración y entrega los
@@ -432,6 +462,29 @@ const textarea =
                 </template>
 
                 <p
+                    class="border-b border-border px-4 py-3 text-sm text-muted-foreground md:px-6"
+                >
+                    <template v-if="anticipacion.ya_enviada">
+                        Las fechas que ya enviaste se conservan. Si agregas un
+                        espacio o cambias el espacio, la fecha o el horario de
+                        uno, debe ser a partir del
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong>
+                        ({{ anticipacion.dias }} días de anticipación).
+                    </template>
+                    <template v-else>
+                        Para enviar la solicitud, cada espacio debe ser a partir
+                        del
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong>
+                        ({{ anticipacion.dias }} días de anticipación). Puedes
+                        guardar el borrador con otras fechas.
+                    </template>
+                </p>
+
+                <p
                     v-if="form.detalles.length === 0"
                     class="px-4 py-8 text-center text-sm text-muted-foreground"
                 >
@@ -477,6 +530,21 @@ const textarea =
                             </p>
                             <p v-if="fila.cuando" class="text-muted-foreground">
                                 {{ fila.cuando }}
+                            </p>
+                            <p
+                                v-if="fila.anticipacion"
+                                class="mt-1 flex items-start gap-1.5 text-amber-700 dark:text-amber-400"
+                            >
+                                <TriangleAlert
+                                    class="mt-0.5 size-4 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                <span
+                                    >Cambia la fecha a partir del
+                                    {{ fechaMinima }}: se requieren
+                                    {{ anticipacion.dias }} días de anticipación
+                                    para enviarla.</span
+                                >
                             </p>
                         </div>
                         <div class="md:col-span-2">

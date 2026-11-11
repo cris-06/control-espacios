@@ -37,6 +37,7 @@ class ReservaWorkflowService
         private readonly NotificacionService $notificaciones,
         private readonly DisponibilidadEspacioService $disponibilidad,
         private readonly ValidacionDetalleReserva $validacionDetalle,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public const ENVIAR = 'enviar';
@@ -109,6 +110,10 @@ class ReservaWorkflowService
             }
 
             if ($transicion['permiso'] === 'enviar') {
+                // Anticipación mínima (Formato 10), con el estado aún sin cambiar: en el primer envío
+                // todos los bloques; en un reenvío, que ninguna fecha haya pasado. Si falla, la
+                // transacción se revierte sin estado, fecha de entrega, historial ni notificaciones.
+                $this->anticipacion->validarEnvio($actual);
                 $this->asignarCoordinador($actual);
                 // Fecha de entrega del formato: la del PRIMER envío (a coordinación o, si la creó
                 // coordinación, a administración). Un reenvío tras corrección la conserva. Se guarda

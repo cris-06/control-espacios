@@ -6,7 +6,9 @@ use App\Models\HistorialReserva;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Alta y edición de reservas con sus detalles. No cambia el estado:
@@ -17,7 +19,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ReservaService
 {
-    public function __construct(private readonly ReservaWorkflowService $workflow) {}
+    public function __construct(
+        private readonly ReservaWorkflowService $workflow,
+        private readonly AnticipacionReserva $anticipacion,
+    ) {}
 
     /**
      * Crea la reserva en borrador, asigna coordinador y registra 'creada' en el historial.
@@ -52,34 +57,55 @@ class ReservaService
      * Guarda los cambios. Si quien edita es el coordinador (no el creador), se registra
      * 'editada_coordinador' en el historial con el resumen de lo que cambió.
      *
+     * Concurrencia: se bloquea la fila de la reserva (el mismo bloqueo, y en el mismo orden,
+     * que toma ReservaWorkflowService::ejecutar) y el permiso se vuelve a comprobar sobre esa
+     * copia bloqueada. Así una edición no puede cruzarse con un envío, aprobación o
+     * autorización: espera a que termine y, si el estado ya no admite editar, se rechaza sin
+     * escribir nada. La instancia recibida solo se actualiza al final, con lo guardado.
+     *
      * @param  array<string, mixed>  $datos
      * @param  list<DatosDetalle>  $detalles
+     *
+     * @throws AuthorizationException si, con el estado actual, el editor ya no puede editarla
      */
     public function actualizar(Reserva $reserva, User $editor, array $datos, array $detalles): Reserva
     {
         return DB::transaction(function () use ($reserva, $editor, $datos, $detalles): Reserva {
-            $licenciaturaAnterior = $reserva->licenciatura_id;
+            $actual = Reserva::query()->whereKey($reserva->getKey())->lockForUpdate()->firstOrFail();
 
-            $reserva->fill($this->limpiar($datos));
-            $camposCambiados = array_keys($reserva->getDirty());
+            // No basta la comprobación del controlador: se hizo antes del bloqueo, con un estado
+            // que pudo cambiar mientras tanto.
+            Gate::forUser($editor)->authorize('update', $actual);
 
-            if ($reserva->licenciatura_id !== $licenciaturaAnterior) {
-                $this->workflow->asignarCoordinador($reserva);
+            // Ya enviada: un bloque nuevo o con otro espacio, fecha u horario debe cumplir la
+            // anticipación mínima. Se valida antes de escribir nada; si falla, no se guarda nada.
+            $this->anticipacion->validarCambios($actual, $detalles);
+
+            $licenciaturaAnterior = $actual->licenciatura_id;
+
+            $actual->fill($this->limpiar($datos));
+            $camposCambiados = array_keys($actual->getDirty());
+
+            if ($actual->licenciatura_id !== $licenciaturaAnterior) {
+                $this->workflow->asignarCoordinador($actual);
             }
 
-            $reserva->save();
-            $detallesCambiaron = $this->sincronizarDetalles($reserva, $detalles);
+            $actual->save();
+            $detallesCambiaron = $this->sincronizarDetalles($actual, $detalles);
 
-            $esCoordinadorAjeno = $reserva->usuario_creador_id !== $editor->id
+            $esCoordinadorAjeno = $actual->usuario_creador_id !== $editor->id
                 && $editor->coordinaLicenciatura($licenciaturaAnterior);
 
             if ($esCoordinadorAjeno && ($camposCambiados !== [] || $detallesCambiaron)) {
-                $reserva->historial()->create([
+                $actual->historial()->create([
                     'usuario_id' => $editor->id,
                     'accion' => HistorialReserva::EDITADA_COORDINADOR,
                     'comentario' => $this->resumenCambios($camposCambiados, $detallesCambiaron),
                 ]);
             }
+
+            $reserva->setRawAttributes($actual->getAttributes(), true);
+            $reserva->unsetRelations();
 
             return $reserva;
         });

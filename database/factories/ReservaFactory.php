@@ -51,7 +51,7 @@ class ReservaFactory extends Factory
         return $this->afterCreating(function (Reserva $reserva) use ($datos): void {
             $detalle = new ReservaDetalle([
                 'espacio_id' => $datos['espacio_id'] ?? Espacio::factory()->create()->id,
-                'fecha' => $datos['fecha'] ?? Date::tomorrow()->toDateString(),
+                'fecha' => $datos['fecha'] ?? Date::today()->addDays(30)->toDateString(),
                 'hora_inicio' => $datos['hora_inicio'] ?? '10:00:00',
                 'hora_fin' => $datos['hora_fin'] ?? '12:00:00',
                 'cantidad_alumnos' => array_key_exists('cantidad_alumnos', $datos) ? $datos['cantidad_alumnos'] : 20,

@@ -31,7 +31,7 @@ function datosReserva(array $cambios = []): array
         'objetivo' => 'Configurar routers',
         'detalles' => [[
             'espacio_id' => test()->espacio->id,
-            'fecha' => Date::tomorrow()->toDateString(),
+            'fecha' => Date::today()->addDays(30)->toDateString(),
             'hora_inicio' => '10:00',
             'hora_fin' => '12:00',
             'cantidad_alumnos' => 20,
@@ -100,7 +100,7 @@ test('the coordinator completes a pending reservation and replaces its details',
 
     $this->actingAs($this->coordinador)
         ->put(route('reservas.update', $reserva), datosReserva(['detalles' => [
-            ['espacio_id' => $otroEspacio->id, 'fecha' => Date::tomorrow()->toDateString(), 'hora_inicio' => '14:00', 'hora_fin' => '15:00', 'cantidad_alumnos' => 10],
+            ['espacio_id' => $otroEspacio->id, 'fecha' => Date::today()->addDays(30)->toDateString(), 'hora_inicio' => '14:00', 'hora_fin' => '15:00', 'cantidad_alumnos' => 10],
         ]]))
         ->assertSessionHasNoErrors();
 

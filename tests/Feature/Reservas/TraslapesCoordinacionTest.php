@@ -39,8 +39,8 @@ beforeEach(function () {
 
     $this->laboratorio = Espacio::factory()->create(['nombre' => 'Laboratorio', 'capacidad' => 40]);
     $this->aula = Espacio::factory()->create(['nombre' => 'Aula', 'capacidad' => 40]);
-    $this->manana = Date::tomorrow()->toDateString();
-    $this->fecha = Date::tomorrow()->format('d/m/Y');
+    $this->manana = Date::today()->addDays(30)->toDateString();
+    $this->fecha = Date::today()->addDays(30)->format('d/m/Y');
 
     $this->reserva = fn (User $creador, Licenciatura $licenciatura, int $estado, array $detalle = [], array $datos = []): Reserva => Reserva::factory()
         ->enEstado($estado)
