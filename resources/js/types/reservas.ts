@@ -141,6 +141,8 @@ export type VerificacionDisponibilidad = {
 export type ReservaFormulario = {
     id: number;
     folio: string | null;
+    // Folio del Formato 10 ({SIGLAS}-{AAAAMMDD}-{ID}); null si la licenciatura no tenía siglas al crearla.
+    folio_institucional?: string | null;
     licenciatura_id: number;
     actividad_id: number;
     nombre_actividad: string | null;
@@ -152,6 +154,9 @@ export type ReservaFormulario = {
     promocion_redes: 'si' | 'no' | null;
     limite_min_usuarios: number | null;
     limite_max_usuarios: number | null;
+    // Fechas automáticas del servidor (solo lectura): elaboración al crear (ISO 8601)
+    // y entrega al primer envío (AAAA-MM-DD, null mientras no se envíe).
+    fecha_creacion: string | null;
     fecha_entrega_formato: string | null;
     estado_id: number;
     detalles: DetalleFormulario[];
@@ -179,6 +184,42 @@ export type AccionFlujo = {
     etiqueta: string;
     destino: number;
     requiereObservacion: boolean;
+};
+
+// Requerimiento pedido que el catálogo actual ya no respalda (aviso previo del detalle).
+export type AdvertenciaRequerimiento = {
+    detalle_id: number;
+    bloque: number;
+    mensaje: string;
+};
+
+// Corrección o decisión vigente según el estado actual (autor, rol y fecha pueden faltar
+// en registros antiguos sin historial).
+export type ObservacionVigente = {
+    tipo: 'correccion_solicitada' | 'autorizada' | 'denegada';
+    comentario: string | null;
+    autor: string | null;
+    rol: string | null;
+    fecha: string | null;
+};
+
+// Casilla de «Autorizaciones» del Formato 10, derivada del estado y del historial.
+// Anticipación mínima del Formato 10, calculada en el servidor (fecha_minima: AAAA-MM-DD).
+// ya_enviada: tras el primer envío solo deben cumplirla los bloques nuevos o modificados.
+export type AnticipacionEnvio = {
+    dias: number;
+    fecha_minima: string;
+    ya_enviada: boolean;
+};
+
+export type CasillaAutorizacion = {
+    clave: 'docente' | 'coordinacion' | 'administracion';
+    titulo: string;
+    situacion: 'completada' | 'pendiente' | 'devuelta' | 'denegada';
+    etiqueta: string;
+    nombre: string | null;
+    rol: string | null;
+    fecha: string | null;
 };
 
 export type RegistroHistorial = {

@@ -3,10 +3,13 @@
 namespace App\Services;
 
 use App\Models\HistorialReserva;
+use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\User;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 
 /**
  * Alta y edición de reservas con sus detalles. No cambia el estado:
@@ -17,7 +20,10 @@ use Illuminate\Support\Facades\DB;
  */
 class ReservaService
 {
-    public function __construct(private readonly ReservaWorkflowService $workflow) {}
+    public function __construct(
+        private readonly ReservaWorkflowService $workflow,
+        private readonly AnticipacionReserva $anticipacion,
+    ) {}
 
     /**
      * Crea la reserva en borrador, asigna coordinador y registra 'creada' en el historial.
@@ -35,6 +41,7 @@ class ReservaService
             $reserva->save();
 
             $reserva->folio = Reserva::folioPara($reserva->id);
+            $reserva->folio_institucional = $this->folioInstitucional($reserva);
             $reserva->save();
 
             $this->sincronizarDetalles($reserva, $detalles);
@@ -52,37 +59,78 @@ class ReservaService
      * Guarda los cambios. Si quien edita es el coordinador (no el creador), se registra
      * 'editada_coordinador' en el historial con el resumen de lo que cambió.
      *
+     * Concurrencia: se bloquea la fila de la reserva (el mismo bloqueo, y en el mismo orden,
+     * que toma ReservaWorkflowService::ejecutar) y el permiso se vuelve a comprobar sobre esa
+     * copia bloqueada. Así una edición no puede cruzarse con un envío, aprobación o
+     * autorización: espera a que termine y, si el estado ya no admite editar, se rechaza sin
+     * escribir nada. La instancia recibida solo se actualiza al final, con lo guardado.
+     *
      * @param  array<string, mixed>  $datos
      * @param  list<DatosDetalle>  $detalles
+     *
+     * @throws AuthorizationException si, con el estado actual, el editor ya no puede editarla
      */
     public function actualizar(Reserva $reserva, User $editor, array $datos, array $detalles): Reserva
     {
         return DB::transaction(function () use ($reserva, $editor, $datos, $detalles): Reserva {
-            $licenciaturaAnterior = $reserva->licenciatura_id;
+            $actual = Reserva::query()->whereKey($reserva->getKey())->lockForUpdate()->firstOrFail();
 
-            $reserva->fill($this->limpiar($datos));
-            $camposCambiados = array_keys($reserva->getDirty());
+            // No basta la comprobación del controlador: se hizo antes del bloqueo, con un estado
+            // que pudo cambiar mientras tanto.
+            Gate::forUser($editor)->authorize('update', $actual);
 
-            if ($reserva->licenciatura_id !== $licenciaturaAnterior) {
-                $this->workflow->asignarCoordinador($reserva);
+            // Ya enviada: un bloque nuevo o con otro espacio, fecha u horario debe cumplir la
+            // anticipación mínima. Se valida antes de escribir nada; si falla, no se guarda nada.
+            $this->anticipacion->validarCambios($actual, $detalles);
+
+            $licenciaturaAnterior = $actual->licenciatura_id;
+
+            $actual->fill($this->limpiar($datos));
+            $camposCambiados = array_keys($actual->getDirty());
+
+            if ($actual->licenciatura_id !== $licenciaturaAnterior) {
+                $this->workflow->asignarCoordinador($actual);
             }
 
-            $reserva->save();
-            $detallesCambiaron = $this->sincronizarDetalles($reserva, $detalles);
+            $actual->save();
+            $detallesCambiaron = $this->sincronizarDetalles($actual, $detalles);
 
-            $esCoordinadorAjeno = $reserva->usuario_creador_id !== $editor->id
+            $esCoordinadorAjeno = $actual->usuario_creador_id !== $editor->id
                 && $editor->coordinaLicenciatura($licenciaturaAnterior);
 
             if ($esCoordinadorAjeno && ($camposCambiados !== [] || $detallesCambiaron)) {
-                $reserva->historial()->create([
+                $actual->historial()->create([
                     'usuario_id' => $editor->id,
                     'accion' => HistorialReserva::EDITADA_COORDINADOR,
                     'comentario' => $this->resumenCambios($camposCambiados, $detallesCambiaron),
                 ]);
             }
 
+            $reserva->setRawAttributes($actual->getAttributes(), true);
+            $reserva->unsetRelations();
+
             return $reserva;
         });
+    }
+
+    /**
+     * Folio institucional (Formato 10), una sola vez al crear y dentro de su transacción:
+     * siglas oficiales de la licenciatura + fecha de creación GUARDADA + id de la reserva.
+     * El id es único (autoincremento), así que no hace falta contador ni MAX(id)+1; el índice
+     * UNIQUE de la columna queda como protección adicional. Sin siglas válidas: null (solo RES).
+     * Nunca se recalcula: actualizar() y el flujo no lo tocan, y no es asignable en masa.
+     */
+    private function folioInstitucional(Reserva $reserva): ?string
+    {
+        $siglas = Licenciatura::query()->whereKey($reserva->licenciatura_id)->value('siglas');
+
+        if (! is_string($siglas) || preg_match(Licenciatura::PATRON_SIGLAS, $siglas) !== 1) {
+            return null;
+        }
+
+        $guardada = Reserva::query()->whereKey($reserva->id)->firstOrFail(['id', 'fecha_creacion'])->fecha_creacion;
+
+        return $guardada === null ? null : Reserva::folioInstitucionalPara($siglas, $guardada, $reserva->id);
     }
 
     /**
@@ -96,7 +144,7 @@ class ReservaService
             'tipo_formato' => 'tipo de formato', 'cuatrimestre_id' => 'cuatrimestre',
             'asignatura_id' => 'asignatura', 'costo_alumno' => 'costo por alumno',
             'promocion_redes' => 'promoción en redes', 'limite_min_usuarios' => 'mínimo de participantes',
-            'limite_max_usuarios' => 'máximo de participantes', 'fecha_entrega_formato' => 'fecha de entrega',
+            'limite_max_usuarios' => 'máximo de participantes',
         ];
 
         $partes = array_values(array_filter(array_map(fn (string $campo) => $etiquetas[$campo] ?? null, $campos)));

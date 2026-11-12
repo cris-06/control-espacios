@@ -16,9 +16,11 @@ use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
 use App\Models\Rol;
 use App\Models\User;
+use App\Services\AnticipacionReserva;
 use App\Services\DisponibilidadEspacioService;
 use App\Services\ReservaService;
 use App\Services\ReservaWorkflowService;
+use App\Support\CasillasAutorizacion;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -37,6 +39,7 @@ class ReservaController extends Controller
         private readonly ReservaService $reservas,
         private readonly ReservaWorkflowService $workflow,
         private readonly DisponibilidadEspacioService $disponibilidad,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public function create(Request $request): Response
@@ -48,6 +51,7 @@ class ReservaController extends Controller
             'opciones' => $this->opciones($request->user()),
             // Al crear aún no se sabe el destino (depende de la licenciatura elegida).
             'envio' => 'Guardar y enviar',
+            'anticipacion' => $this->anticipacion(null),
         ]);
     }
 
@@ -70,6 +74,8 @@ class ReservaController extends Controller
         $reserva->load([
             'creador:id,nombre,apellido_paterno,apellido_materno,correo,rol_id',
             'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador.rol:id,nombre',
             'licenciatura:id,nombre',
             'actividad:id,nombre',
             'cuatrimestre:id,nombre',
@@ -78,13 +84,18 @@ class ReservaController extends Controller
             'detalles.espacio:id,nombre,ubicacion,capacidad',
             'detalles.docenteResponsable:id,nombre,apellido_paterno,apellido_materno',
             'detalles.requerimientosPedidos.requerimiento:id,nombre',
-            'historial.usuario:id,nombre,apellido_paterno,apellido_materno',
+            'historial.usuario:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'historial.usuario.rol:id,nombre',
         ]);
+
+        $acciones = $this->workflow->disponibles($reserva, $user);
+        $puedeEditar = $user->can('update', $reserva);
 
         return Inertia::render('reservas/Show', [
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'estado' => ['id' => $reserva->estado_id, 'nombre' => EstadoReserva::etiqueta($reserva->estado_id), 'descripcion' => $reserva->estado->descripcion],
                 'creador' => $reserva->creador->name,
                 'coordinador' => $reserva->coordinador?->name,
@@ -111,13 +122,30 @@ class ReservaController extends Controller
                     'fecha' => $registro->fecha?->toIso8601String(),
                 ]),
             ],
+            // La corrección o decisión que sigue vigente según el estado actual (el resto queda en la línea de tiempo).
+            'observacionVigente' => $this->observacionVigente($reserva),
+            // Casillas de firma del Formato 10, generadas por el flujo (nunca capturadas a mano).
+            'autorizaciones' => CasillasAutorizacion::para($reserva),
             'puede' => [
-                'editar' => $user->can('update', $reserva),
+                'editar' => $puedeEditar,
             ],
-            'acciones' => $this->workflow->disponibles($reserva, $user),
+            'acciones' => $acciones,
             // Al decidir, administración ve de antemano los choques que bloquearían la autorización.
-            'traslapes' => $user->can('autorizar', $reserva) || $user->can('revisar', $reserva)
-                ? $this->workflow->traslapes($reserva)
+            'traslapes' => match (true) {
+                $user->can('autorizar', $reserva) || $user->can('revisar', $reserva) => $this->workflow->traslapes($reserva, $user),
+                // La creadora ve los choques de su solicitud mientras sigue en curso, sin folios ni datos de reservas ajenas.
+                $reserva->usuario_creador_id === $user->id && $reserva->enEstado(
+                    EstadoReserva::BORRADOR,
+                    EstadoReserva::CORRECCION,
+                    EstadoReserva::PENDIENTE_COORDINADOR,
+                    EstadoReserva::PENDIENTE_ADMIN,
+                ) => $this->disponibilidad->traslapesVisibles($reserva, $user),
+                default => [],
+            },
+            // Requerimientos que el catálogo ya no respalda: solo para quien puede actuar ahora
+            // (la creadora en borrador o corrección, coordinación al revisar, administración al autorizar).
+            'advertencias' => $puedeEditar || $acciones !== []
+                ? $this->workflow->advertenciasRequerimientos($reserva)
                 : [],
         ]);
     }
@@ -126,17 +154,44 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $reserva->load('detalles.requerimientosPedidos');
+        $reserva->load([
+            'detalles.requerimientosPedidos',
+            'creador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'coordinador.rol:id,nombre',
+            'historial.usuario:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'historial.usuario.rol:id,nombre',
+        ]);
 
         return Inertia::render('reservas/Form', [
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
             ],
             'opciones' => $this->opciones($request->user()),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
+            // Solo lectura: las mismas casillas que el detalle, generadas por el flujo.
+            'autorizaciones' => CasillasAutorizacion::para($reserva),
+            'anticipacion' => $this->anticipacion($reserva),
         ]);
+    }
+
+    /**
+     * Anticipación mínima calculada con el reloj del servidor (no el del navegador). Solo
+     * informa al formulario: la regla la aplican ReservaService y ReservaWorkflowService.
+     *
+     * @return array{dias: int, fecha_minima: string, ya_enviada: bool}
+     */
+    private function anticipacion(?Reserva $reserva): array
+    {
+        return [
+            'dias' => AnticipacionReserva::DIAS,
+            'fecha_minima' => $this->anticipacion->fechaMinima()->toDateString(),
+            'ya_enviada' => $reserva !== null && $this->anticipacion->yaEnviada($reserva),
+        ];
     }
 
     public function update(ReservaRequest $request, Reserva $reserva): RedirectResponse
@@ -215,8 +270,66 @@ class ReservaController extends Controller
             'promocion_redes' => $reserva->promocion_redes,
             'limite_min_usuarios' => $reserva->limite_min_usuarios,
             'limite_max_usuarios' => $reserva->limite_max_usuarios,
+            // Fechas automáticas (solo lectura): elaboración al crear; entrega al primer envío.
+            'fecha_creacion' => $reserva->fecha_creacion?->toIso8601String(),
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
             'estado_id' => $reserva->estado_id,
+        ];
+    }
+
+    /**
+     * Observación o decisión vigente según el estado ACTUAL: la última corrección solicitada
+     * si está en corrección, la autorización si está autorizada o la denegación si está
+     * denegada. En cualquier otro estado no hay ninguna vigente (una corrección ya atendida
+     * o un comentario de aprobación solo se ven en la línea de tiempo). Usa el historial ya
+     * cargado y no escribe nada.
+     *
+     * @return array{tipo: string, comentario: string|null, autor: string|null, rol: string|null, fecha: string|null}|null
+     */
+    private function observacionVigente(Reserva $reserva): ?array
+    {
+        $tipo = match ($reserva->estado_id) {
+            EstadoReserva::CORRECCION => HistorialReserva::CORRECCION_SOLICITADA,
+            EstadoReserva::AUTORIZADA => HistorialReserva::AUTORIZADA,
+            EstadoReserva::DENEGADA => HistorialReserva::DENEGADA,
+            default => null,
+        };
+
+        if ($tipo === null) {
+            return null;
+        }
+
+        // La más reciente de ese tipo, desempatando por id para que el resultado sea determinista.
+        $registro = $reserva->historial
+            ->filter(fn (HistorialReserva $h): bool => $h->accion === $tipo)
+            ->sortBy([
+                fn (HistorialReserva $a, HistorialReserva $b): int => ($a->fecha?->getTimestamp() ?? 0) <=> ($b->fecha?->getTimestamp() ?? 0),
+                fn (HistorialReserva $a, HistorialReserva $b): int => $a->id <=> $b->id,
+            ])
+            ->last();
+
+        if ($registro === null) {
+            // Registros antiguos sin historial: solo el texto guardado, sin inventar autor ni fecha.
+            return trim((string) $reserva->observaciones_admin) === '' ? null : [
+                'tipo' => $tipo,
+                'comentario' => $reserva->observaciones_admin,
+                'autor' => null,
+                'rol' => null,
+                'fecha' => null,
+            ];
+        }
+
+        return [
+            'tipo' => $tipo,
+            'comentario' => $registro->comentario,
+            'autor' => $registro->usuario->name,
+            'rol' => match ($registro->usuario->rol?->nombre) {
+                Rol::ADMIN, Rol::SUPERADMIN => 'Administración',
+                Rol::COORDINADOR => 'Coordinación',
+                Rol::DOCENTE => 'Docente',
+                default => null,
+            },
+            'fecha' => $registro->fecha?->toIso8601String(),
         ];
     }
 

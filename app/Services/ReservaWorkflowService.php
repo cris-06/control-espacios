@@ -12,6 +12,7 @@ use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
 use App\Models\User;
+use Closure;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
@@ -36,6 +37,7 @@ class ReservaWorkflowService
         private readonly NotificacionService $notificaciones,
         private readonly DisponibilidadEspacioService $disponibilidad,
         private readonly ValidacionDetalleReserva $validacionDetalle,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public const ENVIAR = 'enviar';
@@ -108,11 +110,23 @@ class ReservaWorkflowService
             }
 
             if ($transicion['permiso'] === 'enviar') {
+                // Anticipación mínima (Formato 10), con el estado aún sin cambiar: en el primer envío
+                // todos los bloques; en un reenvío, que ninguna fecha haya pasado. Si falla, la
+                // transacción se revierte sin estado, fecha de entrega, historial ni notificaciones.
+                $this->anticipacion->validarEnvio($actual);
                 $this->asignarCoordinador($actual);
+                // Fecha de entrega del formato: la del PRIMER envío (a coordinación o, si la creó
+                // coordinación, a administración). Un reenvío tras corrección la conserva. Se guarda
+                // con el save() de esta transacción: si el envío se rechaza, no queda nada.
+                $actual->fecha_entrega_formato ??= Date::today();
             }
 
             if ($transicion['estricta']) {
                 $this->validarCompleta($actual);
+            } elseif ($transicion['permiso'] === 'enviar') {
+                // El envío a coordinación admite borradores incompletos, pero no requerimientos
+                // que el catálogo ya no respalda (pudo cambiar desde que se guardaron).
+                $this->validarRequerimientos($actual);
             }
 
             $avisos = [];
@@ -127,7 +141,7 @@ class ReservaWorkflowService
                     );
                 }
 
-                $traslapes = $this->traslapes($actual);
+                $traslapes = $this->traslapes($actual, $usuario);
 
                 if ($traslapes !== [] && $transicion['traslapes'] === 'bloquear') {
                     throw $this->errores($traslapes);
@@ -287,13 +301,7 @@ class ReservaWorkflowService
                 }
             }
 
-            $pedidos = array_values($detalle->requerimientosPedidos
-                ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
-                ->all());
-
-            foreach ($this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos) as $mensaje) {
-                $errores[] = "$n: ".mb_lcfirst($mensaje);
-            }
+            array_push($errores, ...$this->erroresRequerimientos($detalle, $n));
 
             // Dos bloques de la misma reserva no pueden pisarse entre sí.
             foreach ($detalles->values()->slice($i + 1) as $j => $otro) {
@@ -309,11 +317,54 @@ class ReservaWorkflowService
     }
 
     /**
+     * Validación ligera del envío a coordinación: solo los requerimientos ya pedidos,
+     * contra el catálogo actual (activos, asignados al espacio y dentro de la cantidad
+     * disponible). No exige que la reserva esté completa.
+     *
+     * @throws ValidationException
+     */
+    private function validarRequerimientos(Reserva $reserva): void
+    {
+        $problemas = $this->problemasRequerimientos(
+            $reserva->detalles()->with('requerimientosPedidos')->get(),
+            fn (ReservaDetalle $detalle, int $bloque): string => "Espacio $bloque",
+        );
+
+        if ($problemas !== []) {
+            throw $this->errores(array_column($problemas, 'mensaje'));
+        }
+    }
+
+    /**
+     * Advertencias previas (solo lectura) sobre requerimientos pedidos que el catálogo
+     * actual ya no respalda, para mostrarlas en el detalle antes de intentar una acción.
+     * Reutiliza los bloques ya cargados y no modifica nada.
+     *
+     * @return list<array{detalle_id: int, bloque: int, mensaje: string}>
+     */
+    public function advertenciasRequerimientos(Reserva $reserva): array
+    {
+        $reserva->loadMissing(['detalles.espacio:id,nombre', 'detalles.requerimientosPedidos']);
+
+        return $this->problemasRequerimientos(
+            $reserva->detalles,
+            fn (ReservaDetalle $detalle, int $bloque): string => $detalle->espacio !== null
+                ? "Espacio $bloque ({$detalle->espacio->nombre})"
+                : "Espacio $bloque",
+        );
+    }
+
+    /**
      * Choques con reservas YA autorizadas en el mismo espacio, fecha y horario.
+     *
+     * La detección (choques() con bloqueo, uno por bloque) no depende de quién consulta:
+     * hay exactamente un mensaje por choque. Solo el texto se adapta a $usuario: el folio
+     * de la otra reserva aparece únicamente si puede verla (describir()); si no, se dice
+     * "otra reserva autorizada", con su horario y nada más.
      *
      * @return list<string>
      */
-    public function traslapes(Reserva $reserva): array
+    public function traslapes(Reserva $reserva, User $usuario): array
     {
         $mensajes = [];
 
@@ -327,16 +378,16 @@ class ReservaWorkflowService
                 bloquear: true,
             );
 
-            foreach ($choques as $choque) {
+            foreach ($this->disponibilidad->describir($choques, $usuario) as $choque) {
                 $mensajes[] = sprintf(
-                    '%s el %s de %s a %s choca con la reserva autorizada %s (%s a %s).',
+                    '%s el %s de %s a %s choca con %s (%s a %s).',
                     $detalle->espacio->nombre ?? 'El espacio',
                     $detalle->fecha->format('d/m/Y'),
                     ReservaDetalle::hhmm($detalle->hora_inicio),
                     ReservaDetalle::hhmm($detalle->hora_fin),
-                    $choque->reserva->folio ?? Reserva::folioPara($choque->reserva_id),
-                    ReservaDetalle::hhmm($choque->hora_inicio),
-                    ReservaDetalle::hhmm($choque->hora_fin),
+                    $choque['folio'] !== null ? "la reserva autorizada {$choque['folio']}" : 'otra reserva autorizada',
+                    $choque['hora_inicio'],
+                    $choque['hora_fin'],
                 );
             }
         }
@@ -368,6 +419,44 @@ class ReservaWorkflowService
         }
 
         return null;
+    }
+
+    /**
+     * Problemas de requerimientos de cada bloque, numerados en el orden de la relación
+     * (fecha y hora de inicio), el mismo en que se muestran.
+     *
+     * @param  Collection<int, ReservaDetalle>  $detalles
+     * @param  Closure(ReservaDetalle, int): string  $prefijo
+     * @return list<array{detalle_id: int, bloque: int, mensaje: string}>
+     */
+    private function problemasRequerimientos(Collection $detalles, Closure $prefijo): array
+    {
+        $problemas = [];
+
+        foreach ($detalles->values() as $i => $detalle) {
+            foreach ($this->erroresRequerimientos($detalle, $prefijo($detalle, $i + 1)) as $mensaje) {
+                $problemas[] = ['detalle_id' => $detalle->id, 'bloque' => $i + 1, 'mensaje' => $mensaje];
+            }
+        }
+
+        return $problemas;
+    }
+
+    /**
+     * Requerimientos pedidos en un bloque que el catálogo actual ya no respalda.
+     *
+     * @return list<string>
+     */
+    private function erroresRequerimientos(ReservaDetalle $detalle, string $n): array
+    {
+        $pedidos = array_values($detalle->requerimientosPedidos
+            ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
+            ->all());
+
+        return array_values(array_map(
+            fn (string $mensaje): string => "$n: ".mb_lcfirst($mensaje),
+            $this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos),
+        ));
     }
 
     /**

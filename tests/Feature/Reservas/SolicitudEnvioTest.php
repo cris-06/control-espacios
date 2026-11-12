@@ -31,7 +31,7 @@ beforeEach(function () {
         'objetivo' => 'Configurar routers',
         'detalles' => [[
             'espacio_id' => $this->espacio->id,
-            'fecha' => Date::tomorrow()->toDateString(),
+            'fecha' => Date::today()->addDays(30)->toDateString(),
             'hora_inicio' => '10:00',
             'hora_fin' => '12:00',
             'cantidad_alumnos' => 20,

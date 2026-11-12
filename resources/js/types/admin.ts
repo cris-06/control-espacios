@@ -49,6 +49,8 @@ export type RolAsignable = {
 export type LicenciaturaFila = {
     id: number;
     nombre: string;
+    // Siglas oficiales para el folio institucional; null si aún no se registran.
+    siglas: string | null;
     estatus: 'activa' | 'inactiva' | null;
     coordinadores_count?: number;
     docentes_count?: number;
