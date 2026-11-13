@@ -102,10 +102,12 @@ test('F: a value with HTML tags arrives as plain text and the page shows it by s
 
     expect(($this->detallesVista)($reserva)[0]['lugar_especifico'])->toBe($texto);
 
-    // La plantilla lo interpola con {{ }} (Vue escapa el HTML) y no usa v-html en ningún lugar.
-    $plantilla = (string) file_get_contents(resource_path('js/pages/reservas/Show.vue'));
-    expect($plantilla)->toContain('{{ detalle.lugar_especifico }}')
-        ->and($plantilla)->not->toContain('v-html');
+    // El detalle (VER) muestra el Formato 10 de la plantilla Blade, que interpola con {{ }}
+    // (escapa el HTML); la página Vue no usa v-html en ningún lugar.
+    $html = $this->get(route('reservas.imprimir', ['reserva' => $reserva, 'vista' => 'previa']))->assertOk()->getContent();
+    expect($html)->toContain(e($texto))
+        ->and($html)->not->toContain('<script>alert(1)</script>')
+        ->and((string) file_get_contents(resource_path('js/pages/reservas/Show.vue')))->not->toContain('v-html');
 });
 
 test('G: a specific place longer than 150 characters is rejected', function () {

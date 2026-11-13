@@ -396,7 +396,8 @@
         }
     </style>
 </head>
-<body>
+<body class="{{ $vistaPrevia ? 'previa' : '' }}">
+    @unless ($vistaPrevia)
     <div class="barra" role="region" aria-label="Opciones de impresión">
         <p>
             Para imprimir o guardar como PDF: tamaño <strong>Carta</strong>, orientación <strong>vertical</strong>,
@@ -406,6 +407,7 @@
         <a href="{{ route('reservas.show', $reservaId) }}">Volver a la reserva</a>
         <button type="button" onclick="window.print()">Imprimir / Guardar PDF</button>
     </div>
+    @endunless
 
     <div class="hoja">
         <img class="membrete" src="{{ asset('images/membrete_formato10.jpg') }}" alt="Centro Universitario de Valladolid">
@@ -689,5 +691,240 @@
             </tbody>
         </table>
     </div>
+
+    @if ($vistaPrevia)
+    {{-- Vista previa del detalle (VER): la MISMA hoja de arriba, repartida en pantalla en hojas
+         carta consecutivas con las medidas de impresión (membrete y pie en cada hoja; contenido
+         desde 4.36 cm en la primera y 5 cm en las demás, hasta 2.5 cm del borde inferior). Las
+         filas cortas y las firmas no se parten; las filas largas se dividen por bloques y las
+         tablas interiores repiten su encabezado, como al imprimir. Solo reacomoda en pantalla;
+         la impresión del detalle usa la ruta normal, sin este modo. --}}
+    <style>
+        body.previa {
+            background: transparent;
+        }
+
+        .paginas {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            padding: 8px 0 16px;
+        }
+
+        .pagina {
+            position: relative;
+            flex: none;
+            width: 21.59cm;
+            height: 27.94cm;
+            background: #fff;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .25);
+            overflow: hidden;
+        }
+
+        .pagina .membrete,
+        .pagina .pie {
+            position: absolute !important;
+        }
+
+        .pagina .area {
+            position: absolute;
+            left: 2.045cm;
+            width: 17.5cm;
+            overflow: hidden;
+        }
+
+        @media print {
+            .paginas {
+                zoom: 1 !important;
+                gap: 0;
+                padding: 0;
+            }
+
+            .pagina {
+                box-shadow: none;
+                break-after: page;
+            }
+        }
+    </style>
+    <script>
+        (function () {
+            const hoja = document.querySelector('.hoja');
+            const contenido = hoja.querySelector('.contenido');
+            const membrete = hoja.querySelector('.membrete');
+            const pie = hoja.querySelector('.pie');
+            const paginas = document.createElement('div');
+            paginas.className = 'paginas';
+            let area = null;
+            let cuerpo = null;
+            let total = 0;
+
+            const nuevaPagina = () => {
+                const pagina = document.createElement('div');
+                pagina.className = 'pagina';
+                pagina.setAttribute('aria-label', 'Hoja ' + (total + 1));
+                pagina.append(membrete.cloneNode(true), pie.cloneNode(true));
+                area = document.createElement('div');
+                area.className = 'area';
+                const arriba = total === 0 ? 4.36 : 5;
+                area.style.top = arriba + 'cm';
+                area.style.height = (27.94 - 2.5 - arriba) + 'cm';
+                pagina.appendChild(area);
+                paginas.appendChild(pagina);
+                total++;
+            };
+            const desborda = () => area.scrollHeight > area.clientHeight + 1;
+            const nuevaTabla = (origen) => {
+                const tabla = origen.cloneNode(false);
+                const columnas = origen.querySelector(':scope > colgroup');
+                if (columnas) {
+                    tabla.appendChild(columnas.cloneNode(true));
+                }
+                cuerpo = document.createElement('tbody');
+                tabla.appendChild(cuerpo);
+                area.appendChild(tabla);
+            };
+
+            // Piezas de una celda larga: sus elementos, y las filas de sus tablas interiores.
+            const piezasDe = (celda) => {
+                const piezas = [];
+                for (const nodo of [...celda.childNodes]) {
+                    if (nodo.nodeType === Node.TEXT_NODE && nodo.textContent.trim() === '') {
+                        continue;
+                    }
+                    if (nodo.nodeType === Node.ELEMENT_NODE && nodo.matches('table.interior')) {
+                        for (const fila of nodo.querySelectorAll(':scope > tbody > tr')) {
+                            piezas.push({ tabla: nodo, fila });
+                        }
+                    } else {
+                        piezas.push({ nodo });
+                    }
+                }
+                return piezas;
+            };
+            const crearParte = (fila, etiqueta, celda, primera) => {
+                const tr = fila.cloneNode(false);
+                const td = celda.cloneNode(false);
+                tr.append(primera ? etiqueta : etiqueta.cloneNode(false), td);
+                return { tr, td, interior: null, origen: null };
+            };
+            const colocar = (parte, pieza) => {
+                if (pieza.nodo) {
+                    parte.td.appendChild(pieza.nodo);
+                    parte.interior = null;
+                    return;
+                }
+                if (parte.origen !== pieza.tabla) {
+                    const copia = pieza.tabla.cloneNode(false);
+                    for (const hijo of pieza.tabla.querySelectorAll(':scope > colgroup, :scope > thead')) {
+                        copia.appendChild(hijo.cloneNode(true));
+                    }
+                    parte.interior = document.createElement('tbody');
+                    copia.appendChild(parte.interior);
+                    parte.td.appendChild(copia);
+                    parte.origen = pieza.tabla;
+                }
+                parte.interior.appendChild(pieza.fila);
+            };
+            const quitar = (parte, pieza) => {
+                if (pieza.nodo) {
+                    pieza.nodo.remove();
+                    return;
+                }
+                pieza.fila.remove();
+                if (parte.interior && parte.interior.children.length === 0) {
+                    parte.interior.parentElement.remove();
+                    parte.interior = null;
+                    parte.origen = null;
+                }
+            };
+            const partir = (origen, fila) => {
+                const [etiqueta, celda] = fila.children;
+                const piezas = piezasDe(celda);
+                let parte = crearParte(fila, etiqueta, celda, true);
+                cuerpo.appendChild(parte.tr);
+                for (const pieza of piezas) {
+                    colocar(parte, pieza);
+                    if (!desborda()) {
+                        continue;
+                    }
+                    quitar(parte, pieza);
+                    const vacia = parte.td.childNodes.length === 0;
+                    if (vacia && area.children.length === 1 && cuerpo.children.length === 1) {
+                        colocar(parte, pieza); // No cabe ni sola en una hoja: se deja aquí.
+                        continue;
+                    }
+                    if (vacia) {
+                        parte.tr.remove();
+                    }
+                    nuevaPagina();
+                    nuevaTabla(origen);
+                    parte = crearParte(fila, etiqueta, celda, vacia);
+                    cuerpo.appendChild(parte.tr);
+                    colocar(parte, pieza);
+                }
+            };
+            const repartir = (origen, indivisible) => {
+                const filas = [...origen.querySelector(':scope > tbody').children];
+                nuevaTabla(origen);
+                if (indivisible) {
+                    filas.forEach((fila) => cuerpo.appendChild(fila));
+                    if (desborda() && area.children.length > 1) {
+                        cuerpo.parentElement.remove();
+                        nuevaPagina();
+                        nuevaTabla(origen);
+                        filas.forEach((fila) => cuerpo.appendChild(fila));
+                    }
+                    return;
+                }
+                for (const fila of filas) {
+                    cuerpo.appendChild(fila);
+                    if (!desborda()) {
+                        continue;
+                    }
+                    if (fila.classList.contains('largo')) {
+                        fila.remove();
+                        partir(origen, fila);
+                        continue;
+                    }
+                    if (area.children.length === 1 && cuerpo.children.length === 1) {
+                        continue; // No cabe ni sola en una hoja: se deja aquí.
+                    }
+                    fila.remove();
+                    if (cuerpo.children.length === 0) {
+                        cuerpo.parentElement.remove();
+                    }
+                    nuevaPagina();
+                    nuevaTabla(origen);
+                    cuerpo.appendChild(fila);
+                }
+            };
+            // Ancho de una hoja carta (21.59 cm) en píxeles CSS.
+            const ANCHO_HOJA = 21.59 * 96 / 2.54;
+            const ajustar = () => {
+                paginas.style.zoom = Math.min(1, (window.innerWidth - 8) / ANCHO_HOJA);
+                if (window.parent !== window) {
+                    // Borde inferior real de las hojas (scrollHeight nunca baja de la altura del marco).
+                    const alto = Math.ceil(paginas.getBoundingClientRect().bottom + window.scrollY);
+                    window.parent.postMessage({ tipo: 'formato10-altura', alto }, window.location.origin);
+                }
+            };
+            const paginar = () => {
+                document.body.appendChild(paginas);
+                nuevaPagina();
+                const tablas = [...contenido.querySelectorAll(':scope > table')];
+                for (const tabla of tablas) {
+                    repartir(tabla, tabla.classList.contains('firmas'));
+                }
+                hoja.remove();
+                ajustar();
+                window.addEventListener('resize', ajustar);
+            };
+
+            const listo = document.fonts ? document.fonts.ready : Promise.resolve();
+            listo.then(paginar);
+        })();
+    </script>
+    @endif
 </body>
 </html>

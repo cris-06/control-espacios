@@ -24,6 +24,7 @@ use App\Support\CasillasAutorizacion;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -171,11 +172,11 @@ class ReservaController extends Controller
                 'folio_institucional' => $reserva->folio_institucional,
                 'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
             ],
-            'opciones' => $this->opciones($request->user()),
+            'opciones' => $this->opciones($request->user(), $reserva),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
             // Solo lectura: las mismas casillas que el detalle, generadas por el flujo.
             'autorizaciones' => CasillasAutorizacion::para($reserva),
-            'anticipacion' => $this->anticipacion($reserva),
+            'anticipacion' => $this->anticipacion($reserva, $request->user()),
         ]);
     }
 
@@ -183,14 +184,21 @@ class ReservaController extends Controller
      * Anticipación mínima calculada con el reloj del servidor (no el del navegador). Solo
      * informa al formulario: la regla la aplican ReservaService y ReservaWorkflowService.
      *
-     * @return array{dias: int, fecha_minima: string, ya_enviada: bool}
+     * excepcion_directivo es SOLO informativo para el formulario (oculta el aviso de 10 días):
+     * la excepción la decide ReservaService con el usuario autenticado y su permiso.
+     *
+     * @return array{dias: int, fecha_minima: string, ya_enviada: bool, excepcion_directivo: bool}
      */
-    private function anticipacion(?Reserva $reserva): array
+    private function anticipacion(?Reserva $reserva, ?User $user = null): array
     {
+        $excepcion = $reserva !== null && $user !== null && $user->esAdministrador()
+            && $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN) && $user->can('update', $reserva);
+
         return [
             'dias' => AnticipacionReserva::DIAS,
-            'fecha_minima' => $this->anticipacion->fechaMinima()->toDateString(),
+            'fecha_minima' => ($excepcion ? Date::today() : $this->anticipacion->fechaMinima())->toDateString(),
             'ya_enviada' => $reserva !== null && $this->anticipacion->yaEnviada($reserva),
+            'excepcion_directivo' => $excepcion,
         ];
     }
 
@@ -198,7 +206,7 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles());
+        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles(), $request->motivoEdicion());
 
         return $this->despuesDeGuardar($request, $reserva, 'Reserva actualizada.');
     }
@@ -362,9 +370,13 @@ class ReservaController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function opciones(User $user): array
+    private function opciones(User $user, ?Reserva $reserva = null): array
     {
-        $licenciaturas = $user->licenciaturas()->where('estatus', 'activa')->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
+        // El directivo no tiene licenciaturas asignadas y no puede cambiar la de la reserva: solo
+        // recibe esa (se muestra de solo lectura; mismo criterio que ReservaRequest y ReservaService).
+        $licenciaturas = $user->esAdministrador() && $reserva !== null
+            ? Licenciatura::query()->whereKey($reserva->licenciatura_id)->get(['id', 'nombre'])
+            : $user->licenciaturas()->where('estatus', 'activa')->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
         $licenciaturaIds = array_values($licenciaturas->map(fn (Licenciatura $l): int => $l->id)->all());
 
         $espacios = Espacio::query()

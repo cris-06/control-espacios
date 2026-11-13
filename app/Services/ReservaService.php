@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\EstadoReserva;
 use App\Models\HistorialReserva;
 use App\Models\Licenciatura;
 use App\Models\Reserva;
@@ -10,6 +11,7 @@ use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Alta y edición de reservas con sus detalles. No cambia el estado:
@@ -65,23 +67,46 @@ class ReservaService
      * autorización: espera a que termine y, si el estado ya no admite editar, se rechaza sin
      * escribir nada. La instancia recibida solo se actualiza al final, con lo guardado.
      *
+     * Directivo (admin / superadmin, solo en pendiente_admin según ReservaPolicy::update): la
+     * excepción de los 10 días se decide AQUÍ, con el usuario autenticado y el permiso
+     * comprobado sobre la copia bloqueada; ningún dato del navegador puede activarla. A cambio,
+     * después de sincronizar se aplican las comprobaciones de la autorización
+     * (ReservaWorkflowService::validarEdicionDirectivo) y se registra 'editada_admin'. El estado
+     * no cambia: sigue pendiente_admin hasta que el directivo decida.
+     *
      * @param  array<string, mixed>  $datos
      * @param  list<DatosDetalle>  $detalles
+     * @param  string|null  $motivo  motivo de la edición del directivo (se guarda en el historial)
      *
      * @throws AuthorizationException si, con el estado actual, el editor ya no puede editarla
      */
-    public function actualizar(Reserva $reserva, User $editor, array $datos, array $detalles): Reserva
+    public function actualizar(Reserva $reserva, User $editor, array $datos, array $detalles, ?string $motivo = null): Reserva
     {
-        return DB::transaction(function () use ($reserva, $editor, $datos, $detalles): Reserva {
+        return DB::transaction(function () use ($reserva, $editor, $datos, $detalles, $motivo): Reserva {
             $actual = Reserva::query()->whereKey($reserva->getKey())->lockForUpdate()->firstOrFail();
 
             // No basta la comprobación del controlador: se hizo antes del bloqueo, con un estado
             // que pudo cambiar mientras tanto.
             Gate::forUser($editor)->authorize('update', $actual);
 
+            // Edición del directivo: el permiso ya se comprobó bajo bloqueo, y para administración
+            // solo existe en pendiente_admin.
+            $esDirectivo = $editor->esAdministrador() && $actual->enEstado(EstadoReserva::PENDIENTE_ADMIN);
+
+            // El directivo no puede cambiar la licenciatura (ni, por tanto, el coordinador asignado):
+            // podía dejar la solicitud con un coordinador elegido al azar o sin coordinador, o impedir
+            // que la docente la corrija y reenvíe. ReservaRequest ya lo rechaza; aquí se comprueba
+            // de nuevo bajo bloqueo, antes de escribir nada.
+            if ($esDirectivo && array_key_exists('licenciatura_id', $datos) && (int) $datos['licenciatura_id'] !== $actual->licenciatura_id) {
+                throw ValidationException::withMessages([
+                    'licenciatura_id' => 'El directivo no puede cambiar la licenciatura de la solicitud.',
+                ]);
+            }
+
             // Ya enviada: un bloque nuevo o con otro espacio, fecha u horario debe cumplir la
-            // anticipación mínima. Se valida antes de escribir nada; si falla, no se guarda nada.
-            $this->anticipacion->validarCambios($actual, $detalles);
+            // anticipación mínima (el directivo, solo que no sea una fecha pasada). Se valida
+            // antes de escribir nada; si falla, no se guarda nada.
+            $this->anticipacion->validarCambios($actual, $detalles, excepcionDirectivo: $esDirectivo);
 
             $licenciaturaAnterior = $actual->licenciatura_id;
 
@@ -95,7 +120,23 @@ class ReservaService
             $actual->save();
             $detallesCambiaron = $this->sincronizarDetalles($actual, $detalles);
 
-            $esCoordinadorAjeno = $actual->usuario_creador_id !== $editor->id
+            if ($esDirectivo) {
+                // Mismas comprobaciones que la autorización, con la fila ya bloqueada (orden:
+                // reserva y después espacios). Si fallan, se revierte toda la transacción.
+                $this->workflow->validarEdicionDirectivo($actual, $editor);
+
+                if ($camposCambiados !== [] || $detallesCambiaron) {
+                    $motivo = trim((string) $motivo);
+                    $actual->historial()->create([
+                        'usuario_id' => $editor->id,
+                        'accion' => HistorialReserva::EDITADA_ADMIN,
+                        'comentario' => $this->resumenCambios($camposCambiados, $detallesCambiaron).($motivo !== '' ? ' Motivo: '.$motivo : ''),
+                    ]);
+                }
+            }
+
+            $esCoordinadorAjeno = ! $esDirectivo
+                && $actual->usuario_creador_id !== $editor->id
                 && $editor->coordinaLicenciatura($licenciaturaAnterior);
 
             if ($esCoordinadorAjeno && ($camposCambiados !== [] || $detallesCambiaron)) {

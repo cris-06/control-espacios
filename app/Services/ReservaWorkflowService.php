@@ -234,6 +234,33 @@ class ReservaWorkflowService
     }
 
     /**
+     * Edición directa del directivo (pendiente_admin): las mismas comprobaciones que la
+     * autorización, sin cambiar de estado. Se llama dentro de la transacción de
+     * ReservaService::actualizar, con la fila de la reserva YA bloqueada y los detalles ya
+     * sincronizados; respeta el orden de bloqueos de ejecutar() (primero la reserva, después
+     * los espacios en orden de id). Si algo falla, la excepción revierte toda la edición.
+     *
+     * - validarCompleta(): datos generales, fechas no pasadas, horarios, alumnos, capacidad,
+     *   docentes responsables, requerimientos y traslapes entre bloques de la misma reserva.
+     * - Choques con reservas AUTORIZADAS: se bloquean los espacios y se consultan con FOR UPDATE
+     *   (traslapes()), igual que al autorizar; cualquier choque impide guardar.
+     *
+     * @throws ValidationException
+     */
+    public function validarEdicionDirectivo(Reserva $reserva, User $usuario): void
+    {
+        $this->validarCompleta($reserva);
+
+        $this->disponibilidad->bloquearEspacios($reserva->detalles()->pluck('espacio_id')->all());
+
+        $traslapes = $this->traslapes($reserva, $usuario);
+
+        if ($traslapes !== []) {
+            throw $this->errores($traslapes);
+        }
+    }
+
+    /**
      * Validaciones estrictas que se exigen al enviar a administración.
      *
      * @throws ValidationException

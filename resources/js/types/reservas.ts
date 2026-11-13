@@ -42,6 +42,22 @@ export type ReservaFila = Omit<
     hora_inicio: string | null;
     hora_fin: string | null;
     cantidad_alumnos: number | null;
+    // Solo en el listado de solicitudes: lo que el usuario puede hacer ahora (lo decide el servidor).
+    acciones?: AccionesFila;
+};
+
+// Transición ofrecida en el listado (aprobar = «Enviar a directivo», denegar = «Rechazar»,
+// solicitar_correccion = «Mandar a corregir»).
+export type TransicionFila = {
+    accion: 'aprobar' | 'autorizar' | 'denegar' | 'solicitar_correccion';
+    etiqueta: string;
+    requiereObservacion: boolean;
+};
+
+export type AccionesFila = {
+    ver: boolean;
+    editar: boolean;
+    transiciones: TransicionFila[];
 };
 
 export type Indicador = {
@@ -210,6 +226,8 @@ export type AnticipacionEnvio = {
     dias: number;
     fecha_minima: string;
     ya_enviada: boolean;
+    // Solo informativo (lo calcula el servidor): edición del directivo, sin el mínimo de días.
+    excepcion_directivo: boolean;
 };
 
 export type CasillaAutorizacion = {

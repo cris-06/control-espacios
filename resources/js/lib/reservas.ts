@@ -98,3 +98,31 @@ export function folioVisible(reserva: {
 }): string | null {
     return reserva.folio_institucional || reserva.folio;
 }
+
+/**
+ * Etiqueta visible de una acción del flujo, igual en el listado y en el detalle. Solo cambia
+ * el texto: la acción interna (aprobar, denegar, …) y sus permisos son los del servidor.
+ */
+export function etiquetaAccion(accion: {
+    accion: string;
+    etiqueta: string;
+    destino?: number;
+}): string {
+    switch (accion.accion) {
+        case 'aprobar':
+            return 'Enviar a directivo';
+        case 'autorizar':
+            return 'Autorizar';
+        case 'denegar':
+            return 'Rechazar';
+        case 'solicitar_correccion':
+            return 'Mandar a corregir';
+        case 'enviar':
+            // estados_reserva.id 4 = pendiente de administración (directivo).
+            return accion.destino === 4
+                ? 'Enviar a directivo'
+                : 'Enviar a coordinación';
+        default:
+            return accion.etiqueta;
+    }
+}

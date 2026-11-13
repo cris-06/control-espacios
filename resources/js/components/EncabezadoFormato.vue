@@ -53,7 +53,7 @@ const elaboracion = computed(() =>
                     Centro Universitario de Valladolid
                 </p>
                 <h2 class="text-lg font-semibold text-rojo">
-                    Formato de actividades o eventos
+                    FORMATO 10 DE ACTIVIDADES O EVENTOS
                 </h2>
             </div>
         </div>
