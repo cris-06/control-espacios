@@ -16,12 +16,15 @@ use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
 use App\Models\Rol;
 use App\Models\User;
+use App\Services\AnticipacionReserva;
 use App\Services\DisponibilidadEspacioService;
 use App\Services\ReservaService;
 use App\Services\ReservaWorkflowService;
+use App\Support\CasillasAutorizacion;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
@@ -37,6 +40,7 @@ class ReservaController extends Controller
         private readonly ReservaService $reservas,
         private readonly ReservaWorkflowService $workflow,
         private readonly DisponibilidadEspacioService $disponibilidad,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public function create(Request $request): Response
@@ -48,6 +52,7 @@ class ReservaController extends Controller
             'opciones' => $this->opciones($request->user()),
             // Al crear aún no se sabe el destino (depende de la licenciatura elegida).
             'envio' => 'Guardar y enviar',
+            'anticipacion' => $this->anticipacion(null),
         ]);
     }
 
@@ -70,6 +75,8 @@ class ReservaController extends Controller
         $reserva->load([
             'creador:id,nombre,apellido_paterno,apellido_materno,correo,rol_id',
             'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador.rol:id,nombre',
             'licenciatura:id,nombre',
             'actividad:id,nombre',
             'cuatrimestre:id,nombre',
@@ -89,6 +96,7 @@ class ReservaController extends Controller
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'estado' => ['id' => $reserva->estado_id, 'nombre' => EstadoReserva::etiqueta($reserva->estado_id), 'descripcion' => $reserva->estado->descripcion],
                 'creador' => $reserva->creador->name,
                 'coordinador' => $reserva->coordinador?->name,
@@ -117,6 +125,8 @@ class ReservaController extends Controller
             ],
             // La corrección o decisión que sigue vigente según el estado actual (el resto queda en la línea de tiempo).
             'observacionVigente' => $this->observacionVigente($reserva),
+            // Casillas de firma del Formato 10, generadas por el flujo (nunca capturadas a mano).
+            'autorizaciones' => CasillasAutorizacion::para($reserva),
             'puede' => [
                 'editar' => $puedeEditar,
             ],
@@ -145,24 +155,58 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $reserva->load('detalles.requerimientosPedidos');
+        $reserva->load([
+            'detalles.requerimientosPedidos',
+            'creador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'creador.rol:id,nombre',
+            'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'coordinador.rol:id,nombre',
+            'historial.usuario:id,nombre,apellido_paterno,apellido_materno,rol_id',
+            'historial.usuario.rol:id,nombre',
+        ]);
 
         return Inertia::render('reservas/Form', [
             'reserva' => [
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
+                'folio_institucional' => $reserva->folio_institucional,
                 'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
             ],
-            'opciones' => $this->opciones($request->user()),
+            'opciones' => $this->opciones($request->user(), $reserva),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
+            // Solo lectura: las mismas casillas que el detalle, generadas por el flujo.
+            'autorizaciones' => CasillasAutorizacion::para($reserva),
+            'anticipacion' => $this->anticipacion($reserva, $request->user()),
         ]);
+    }
+
+    /**
+     * Anticipación mínima calculada con el reloj del servidor (no el del navegador). Solo
+     * informa al formulario: la regla la aplican ReservaService y ReservaWorkflowService.
+     *
+     * excepcion_directivo es SOLO informativo para el formulario (oculta el aviso de 10 días):
+     * la excepción la decide ReservaService con el usuario autenticado y su permiso.
+     *
+     * @return array{dias: int, fecha_minima: string, ya_enviada: bool, excepcion_directivo: bool}
+     */
+    private function anticipacion(?Reserva $reserva, ?User $user = null): array
+    {
+        $excepcion = $reserva !== null && $user !== null && $user->esAdministrador()
+            && $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN) && $user->can('update', $reserva);
+
+        return [
+            'dias' => AnticipacionReserva::DIAS,
+            'fecha_minima' => ($excepcion ? Date::today() : $this->anticipacion->fechaMinima())->toDateString(),
+            'ya_enviada' => $reserva !== null && $this->anticipacion->yaEnviada($reserva),
+            'excepcion_directivo' => $excepcion,
+        ];
     }
 
     public function update(ReservaRequest $request, Reserva $reserva): RedirectResponse
     {
         Gate::authorize('update', $reserva);
 
-        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles());
+        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles(), $request->motivoEdicion());
 
         return $this->despuesDeGuardar($request, $reserva, 'Reserva actualizada.');
     }
@@ -234,6 +278,8 @@ class ReservaController extends Controller
             'promocion_redes' => $reserva->promocion_redes,
             'limite_min_usuarios' => $reserva->limite_min_usuarios,
             'limite_max_usuarios' => $reserva->limite_max_usuarios,
+            // Fechas automáticas (solo lectura): elaboración al crear; entrega al primer envío.
+            'fecha_creacion' => $reserva->fecha_creacion?->toIso8601String(),
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
             'estado_id' => $reserva->estado_id,
         ];
@@ -324,9 +370,13 @@ class ReservaController extends Controller
      *
      * @return array<string, mixed>
      */
-    private function opciones(User $user): array
+    private function opciones(User $user, ?Reserva $reserva = null): array
     {
-        $licenciaturas = $user->licenciaturas()->where('estatus', 'activa')->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
+        // El directivo no tiene licenciaturas asignadas y no puede cambiar la de la reserva: solo
+        // recibe esa (se muestra de solo lectura; mismo criterio que ReservaRequest y ReservaService).
+        $licenciaturas = $user->esAdministrador() && $reserva !== null
+            ? Licenciatura::query()->whereKey($reserva->licenciatura_id)->get(['id', 'nombre'])
+            : $user->licenciaturas()->where('estatus', 'activa')->orderBy('nombre')->get(['licenciaturas.id', 'nombre']);
         $licenciaturaIds = array_values($licenciaturas->map(fn (Licenciatura $l): int => $l->id)->all());
 
         $espacios = Espacio::query()

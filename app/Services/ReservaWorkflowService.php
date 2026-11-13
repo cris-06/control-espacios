@@ -37,6 +37,7 @@ class ReservaWorkflowService
         private readonly NotificacionService $notificaciones,
         private readonly DisponibilidadEspacioService $disponibilidad,
         private readonly ValidacionDetalleReserva $validacionDetalle,
+        private readonly AnticipacionReserva $anticipacion,
     ) {}
 
     public const ENVIAR = 'enviar';
@@ -109,7 +110,15 @@ class ReservaWorkflowService
             }
 
             if ($transicion['permiso'] === 'enviar') {
+                // Anticipación mínima (Formato 10), con el estado aún sin cambiar: en el primer envío
+                // todos los bloques; en un reenvío, que ninguna fecha haya pasado. Si falla, la
+                // transacción se revierte sin estado, fecha de entrega, historial ni notificaciones.
+                $this->anticipacion->validarEnvio($actual);
                 $this->asignarCoordinador($actual);
+                // Fecha de entrega del formato: la del PRIMER envío (a coordinación o, si la creó
+                // coordinación, a administración). Un reenvío tras corrección la conserva. Se guarda
+                // con el save() de esta transacción: si el envío se rechaza, no queda nada.
+                $actual->fecha_entrega_formato ??= Date::today();
             }
 
             if ($transicion['estricta']) {
@@ -221,6 +230,33 @@ class ReservaWorkflowService
 
         if ($reserva->coordinador_id === null || ! $coordinadores->contains($reserva->coordinador_id)) {
             $reserva->coordinador_id = $coordinadores->first();
+        }
+    }
+
+    /**
+     * Edición directa del directivo (pendiente_admin): las mismas comprobaciones que la
+     * autorización, sin cambiar de estado. Se llama dentro de la transacción de
+     * ReservaService::actualizar, con la fila de la reserva YA bloqueada y los detalles ya
+     * sincronizados; respeta el orden de bloqueos de ejecutar() (primero la reserva, después
+     * los espacios en orden de id). Si algo falla, la excepción revierte toda la edición.
+     *
+     * - validarCompleta(): datos generales, fechas no pasadas, horarios, alumnos, capacidad,
+     *   docentes responsables, requerimientos y traslapes entre bloques de la misma reserva.
+     * - Choques con reservas AUTORIZADAS: se bloquean los espacios y se consultan con FOR UPDATE
+     *   (traslapes()), igual que al autorizar; cualquier choque impide guardar.
+     *
+     * @throws ValidationException
+     */
+    public function validarEdicionDirectivo(Reserva $reserva, User $usuario): void
+    {
+        $this->validarCompleta($reserva);
+
+        $this->disponibilidad->bloquearEspacios($reserva->detalles()->pluck('espacio_id')->all());
+
+        $traslapes = $this->traslapes($reserva, $usuario);
+
+        if ($traslapes !== []) {
+            throw $this->errores($traslapes);
         }
     }
 

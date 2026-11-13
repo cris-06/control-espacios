@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Database\Factories\ReservaFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Carbon;
 
 /**
  * Reserva (tabla `reservas`). Los cambios de estado se hacen SOLO con
@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property int $licenciatura_id
  * @property string|null $nombre_actividad
  * @property string|null $folio
+ * @property string|null $folio_institucional
  * @property string $objetivo
  * @property int|null $cuatrimestre_id
  * @property int|null $asignatura_id
@@ -31,7 +32,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $promocion_redes
  * @property int|null $limite_min_usuarios
  * @property int|null $limite_max_usuarios
- * @property Carbon|null $fecha_entrega_formato
+ * @property CarbonInterface|null $fecha_entrega_formato
+ * @property CarbonInterface|null $fecha_creacion
+ * @property CarbonInterface|null $fecha_actualizacion
  */
 class Reserva extends Model
 {
@@ -44,10 +47,12 @@ class Reserva extends Model
 
     protected $table = 'reservas';
 
+    // folio, folio_institucional, fecha_creacion y fecha_entrega_formato no son asignables: las fija el servidor
+    // (ReservaService::crear y el primer envío en ReservaWorkflowService::ejecutar).
     protected $fillable = [
         'actividad_id', 'licenciatura_id', 'tipo_formato', 'nombre_actividad', 'objetivo',
         'cuatrimestre_id', 'asignatura_id', 'costo_alumno', 'promocion_redes',
-        'limite_min_usuarios', 'limite_max_usuarios', 'fecha_entrega_formato',
+        'limite_min_usuarios', 'limite_max_usuarios',
     ];
 
     protected $attributes = [
@@ -217,5 +222,14 @@ class Reserva extends Model
     public static function folioPara(int $id): string
     {
         return sprintf('RES-%05d', $id);
+    }
+
+    /**
+     * Folio institucional del Formato 10: {SIGLAS}-{AAAAMMDD}-{ID}, con el id en al menos
+     * cinco dígitos (más largo no se recorta). La fecha es la de creación, en la zona del proyecto.
+     */
+    public static function folioInstitucionalPara(string $siglas, CarbonInterface $fechaCreacion, int $id): string
+    {
+        return sprintf('%s-%s-%05d', $siglas, $fechaCreacion->setTimezone(date_default_timezone_get())->format('Ymd'), $id);
     }
 }

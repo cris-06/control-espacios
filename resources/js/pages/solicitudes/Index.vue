@@ -130,6 +130,7 @@ watch([estadoId, licenciaturaId], ([estado, licenciatura]) => {
                 :reservas="solicitudes"
                 :mostrar-docente="!esDocente"
                 enlazar
+                con-acciones
                 vacio="No hay solicitudes con estos filtros."
             />
         </TarjetaSeccion>

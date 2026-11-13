@@ -33,6 +33,7 @@ const props = defineProps<{
 
 const columnas = [
     { clave: 'nombre', titulo: 'Licenciatura' },
+    { clave: 'siglas', titulo: 'Siglas' },
     { clave: 'asignados', titulo: 'Asignados' },
     { clave: 'estatus', titulo: 'Estatus' },
     { clave: 'acciones', titulo: 'Acciones' },
@@ -74,7 +75,10 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
         titulo="Licenciaturas"
         descripcion="Catálogo de licenciaturas. Una licenciatura inactiva no se puede asignar a nuevos usuarios."
     >
-        <TarjetaSeccion titulo="Nueva licenciatura">
+        <TarjetaSeccion
+            titulo="Nueva licenciatura"
+            descripcion="Las siglas oficiales (2 a 10 letras) forman el folio institucional de las reservas que se creen después de registrarlas. Déjalas vacías hasta que el CUV las confirme."
+        >
             <Form
                 v-bind="LicenciaturaController.store.form()"
                 reset-on-success
@@ -94,6 +98,21 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                             required
                             maxlength="100"
                             placeholder="Ej. Sistemas Computacionales"
+                        />
+                    </CampoFormulario>
+                </div>
+                <div class="w-full sm:w-40">
+                    <CampoFormulario
+                        id="siglas-nueva"
+                        etiqueta="Siglas (opcional)"
+                        :error="errors.siglas"
+                    >
+                        <Input
+                            id="siglas-nueva"
+                            name="siglas"
+                            maxlength="10"
+                            autocomplete="off"
+                            class="uppercase"
                         />
                     </CampoFormulario>
                 </div>
@@ -125,6 +144,14 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                         Sin coordinador: sus docentes no podrán enviar reservas.
                     </div>
                 </template>
+                <template #siglas="{ fila }">
+                    <span v-if="fila.siglas" class="font-medium">{{
+                        fila.siglas
+                    }}</span>
+                    <span v-else class="text-sm text-muted-foreground italic"
+                        >Sin siglas</span
+                    >
+                </template>
                 <template #estatus="{ fila }">
                     <Badge
                         variant="outline"
@@ -145,7 +172,7 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                             @click="editando = fila"
                         >
                             <Pencil class="size-4" />
-                            Renombrar
+                            Editar
                         </Button>
                         <Button
                             variant="ghost"
@@ -168,7 +195,7 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
     <Dialog v-model:open="dialogoAbierto">
         <DialogContent v-if="editando">
             <DialogHeader>
-                <DialogTitle>Renombrar licenciatura</DialogTitle>
+                <DialogTitle>Editar licenciatura</DialogTitle>
             </DialogHeader>
             <Form
                 v-bind="LicenciaturaController.update.form(editando.id)"
@@ -189,6 +216,24 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                         required
                         maxlength="100"
                     />
+                </CampoFormulario>
+                <CampoFormulario
+                    id="siglas-editar"
+                    etiqueta="Siglas (opcional)"
+                    :error="errors.siglas"
+                >
+                    <Input
+                        id="siglas-editar"
+                        name="siglas"
+                        :default-value="editando.siglas ?? ''"
+                        maxlength="10"
+                        autocomplete="off"
+                        class="uppercase"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        Cambiarlas solo afecta a las reservas nuevas; los folios
+                        ya asignados no cambian.
+                    </p>
                 </CampoFormulario>
                 <DialogFooter>
                     <Button

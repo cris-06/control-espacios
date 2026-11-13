@@ -16,7 +16,9 @@ use Illuminate\Auth\Access\Response;
  *   coordinador. No ve reservas ajenas ni revisa, autoriza o deniega.
  * - Coordinador: igual que el docente con sus propias reservas; además ve, edita
  *   (en pendiente_coordinador) y revisa las de SUS licenciaturas.
- * - Admin / superadmin: ven todo y deciden las que están en pendiente_admin.
+ * - Admin / superadmin: ven todo y deciden las que están en pendiente_admin; también pueden
+ *   editarlas directamente mientras están en ese estado (sin el mínimo de 10 días, ver
+ *   ReservaService::actualizar).
  *
  * Las transiciones de estado en sí las valida ReservaWorkflowService (Fase 4);
  * esta policy decide si el usuario puede intentar la acción.
@@ -60,6 +62,16 @@ class ReservaPolicy
 
     public function update(User $user, Reserva $reserva): bool
     {
+        // Directivo (admin / superadmin): edición directa SOLO mientras la solicitud espera su
+        // decisión (pendiente_admin). Ningún otro estado: ni borradores, ni las que están en
+        // coordinación o corrección, ni las ya autorizadas o denegadas.
+        // [feature/formato-10] Cambio pendiente de revisión de CristhianKu antes de fusionar.
+        // Antes, administración no cumplía ninguna de las condiciones de abajo (no crea reservas
+        // y no coordina licenciaturas), así que docentes y coordinadores no cambian.
+        if ($user->esAdministrador()) {
+            return $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN);
+        }
+
         if ($this->esCreador($user, $reserva) && $reserva->enEstado(...self::EDITABLES_POR_CREADOR)) {
             return true;
         }

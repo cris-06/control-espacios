@@ -1,20 +1,24 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { Plus, Send } from '@lucide/vue';
+import { Plus, Send, TriangleAlert } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
 import BloqueReserva from '@/components/BloqueReserva.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
+import EncabezadoFormato from '@/components/EncabezadoFormato.vue';
 import InputError from '@/components/InputError.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
 import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { aMinutos } from '@/lib/reservas';
+import { aMinutos, folioVisible, formatearFecha } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
 import type {
+    AnticipacionEnvio,
+    CasillaAutorizacion,
     DetalleEditable,
     OpcionesReserva,
     ReservaFormulario,
@@ -25,7 +29,45 @@ const props = defineProps<{
     opciones: OpcionesReserva;
     // Etiqueta de «Guardar y enviar», o null si quien edita no puede enviarla ahora.
     envio: string | null;
+    // Casillas de firma generadas por el flujo (solo al editar; una reserva nueva aún no tiene).
+    autorizaciones?: CasillaAutorizacion[];
+    // Anticipación mínima calculada por el servidor (la regla se aplica en Laravel).
+    anticipacion: AnticipacionEnvio;
 }>();
+
+// Una reserva nueva todavía no tiene decisiones: las tres casillas quedan pendientes.
+const casillasAutorizacion = computed<CasillaAutorizacion[]>(
+    () =>
+        props.autorizaciones ?? [
+            {
+                clave: 'docente',
+                titulo: 'Docente responsable',
+                situacion: 'pendiente',
+                etiqueta: 'En elaboración, sin enviar',
+                nombre: page.props.auth.user.name,
+                rol: null,
+                fecha: null,
+            },
+            {
+                clave: 'coordinacion',
+                titulo: 'Coordinación',
+                situacion: 'pendiente',
+                etiqueta: 'Pendiente',
+                nombre: null,
+                rol: null,
+                fecha: null,
+            },
+            {
+                clave: 'administracion',
+                titulo: 'Autorización',
+                situacion: 'pendiente',
+                etiqueta: 'Pendiente',
+                nombre: null,
+                rol: null,
+                fecha: null,
+            },
+        ],
+);
 
 const page = usePage();
 
@@ -38,7 +80,7 @@ defineOptions({
 const esEdicion = computed(() => props.reserva !== null);
 const titulo = computed(() =>
     props.reserva
-        ? `Editar reserva ${props.reserva.folio ?? ''}`.trim()
+        ? `Editar reserva ${folioVisible(props.reserva) ?? ''}`.trim()
         : 'Nueva reserva',
 );
 
@@ -89,7 +131,9 @@ const form = useForm({
     limite_max_usuarios: (props.reserva?.limite_max_usuarios ?? '') as
         | number
         | '',
-    fecha_entrega_formato: props.reserva?.fecha_entrega_formato ?? '',
+    // Solo la usa el servidor en la edición del directivo (historial «editada_admin»).
+    motivo_edicion: '',
+    // folio, fecha_creacion y fecha_entrega_formato no se envían: los fija el servidor.
     detalles: (props.reserva?.detalles ?? []).map((d): DetalleEditable => ({
         ...d,
         espacio_id: aTexto(d.espacio_id),
@@ -163,6 +207,67 @@ const traslapesInternos = computed(() =>
     ),
 );
 
+// Anticipación (solo aviso; la valida el servidor). Antes del primer envío la deben cumplir
+// todos los bloques; después, solo los nuevos o con otro espacio, fecha u horario.
+const fechaMinima = computed(() =>
+    formatearFecha(props.anticipacion.fecha_minima),
+);
+const originales = new Map(
+    (props.reserva?.detalles ?? []).map((d) => [
+        d.id,
+        `${d.espacio_id}|${d.fecha}|${d.hora_inicio.slice(0, 5)}|${d.hora_fin.slice(0, 5)}`,
+    ]),
+);
+const debeCumplirAnticipacion = (d: DetalleEditable) =>
+    !props.anticipacion.ya_enviada ||
+    d.id === null ||
+    originales.get(d.id) !==
+        `${d.espacio_id}|${d.fecha}|${d.hora_inicio.slice(0, 5)}|${d.hora_fin.slice(0, 5)}`;
+const incumpleAnticipacion = (d: DetalleEditable) =>
+    d.fecha !== '' &&
+    d.fecha < props.anticipacion.fecha_minima &&
+    debeCumplirAnticipacion(d);
+
+// Resumen de lo pedido en cada espacio (se captura dentro de cada bloque; aquí solo se lee).
+const resumenRequerimientos = computed(() =>
+    form.detalles.flatMap((d, i) => {
+        const espacio = props.opciones.espacios.find(
+            (e) => String(e.id) === d.espacio_id,
+        );
+
+        if (!espacio) {
+            return [];
+        }
+
+        return [
+            {
+                clave: claves.value[i],
+                bloque: i + 1,
+                espacio: espacio.nombre,
+                // Fecha y horario unidos solo con lo que ya se capturó (sin separadores sueltos).
+                cuando: [
+                    d.fecha ? formatearFecha(d.fecha) : '',
+                    d.hora_inicio && d.hora_fin
+                        ? `${d.hora_inicio} – ${d.hora_fin}`
+                        : '',
+                ]
+                    .filter(Boolean)
+                    .join(' · '),
+                requerimientos: d.requerimientos.map((r) => {
+                    const nombre =
+                        espacio.requerimientos.find(
+                            (c) => c.id === r.requerimiento_id,
+                        )?.nombre ?? 'Requerimiento';
+
+                    return `${nombre} (${r.cantidad})`;
+                }),
+                material: d.material_requerido?.trim() ?? '',
+                anticipacion: incumpleAnticipacion(d),
+            },
+        ];
+    }),
+);
+
 const guardar = (enviar = false) => {
     const opciones = { preserveScroll: true };
 
@@ -185,6 +290,14 @@ const guardar = (enviar = false) => {
         form.post(store.url(), opciones);
     }
 };
+
+// Nombre de la licenciatura actual (edición del directivo, donde se muestra sin poder cambiarla).
+const licenciaturaActual = computed(
+    () =>
+        props.opciones.licenciaturas.find(
+            (l) => String(l.id) === form.licenciatura_id,
+        )?.nombre ?? '',
+);
 
 const textarea =
     'min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
@@ -217,32 +330,52 @@ const textarea =
         </div>
 
         <form class="grid gap-6" @submit.prevent="guardar()">
+            <!-- Encabezado institucional: folio y fechas automáticas (solo lectura). -->
+            <EncabezadoFormato
+                :folio="reserva?.folio ?? null"
+                :folio-institucional="reserva?.folio_institucional ?? null"
+                :fecha-creacion="reserva?.fecha_creacion ?? null"
+                :fecha-entrega="reserva?.fecha_entrega_formato ?? null"
+                :estado-id="reserva?.estado_id ?? null"
+            />
+
+            <TarjetaSeccion titulo="Indicaciones">
+                <ol
+                    class="grid list-decimal gap-1 py-4 pr-4 pl-9 text-sm text-muted-foreground md:py-6 md:pr-6 md:pl-11"
+                >
+                    <li>
+                        Puedes guardar la solicitud como borrador y completarla
+                        después.
+                    </li>
+                    <li v-if="anticipacion.excepcion_directivo">
+                        Edición del directivo: puedes cambiar fechas, horarios y
+                        espacios aunque falten menos de
+                        {{ anticipacion.dias }} días, a partir de hoy (<strong
+                            class="font-semibold text-foreground"
+                            >{{ fechaMinima }}</strong
+                        >). Al guardar se comprueban la capacidad, los
+                        requerimientos y los choques con reservas autorizadas;
+                        la solicitud sigue pendiente de tu decisión.
+                    </li>
+                    <li v-else>
+                        Envíala con al menos {{ anticipacion.dias }} días
+                        naturales de anticipación: hoy, la fecha más próxima
+                        permitida es el
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong
+                        >.
+                    </li>
+                    <li>
+                        El folio y las fechas de elaboración y entrega los
+                        asigna el sistema; las autorizaciones de coordinación y
+                        administración se registran en el sistema.
+                    </li>
+                </ol>
+            </TarjetaSeccion>
+
             <TarjetaSeccion titulo="Datos generales">
                 <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
-                    <CampoFormulario
-                        id="licenciatura_id"
-                        etiqueta="Licenciatura"
-                        :error="form.errors.licenciatura_id"
-                    >
-                        <CampoSelect
-                            id="licenciatura_id"
-                            v-model="form.licenciatura_id"
-                            :opciones="opciones.licenciaturas"
-                            vacio="Selecciona una licenciatura"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="actividad_id"
-                        etiqueta="Tipo de actividad"
-                        :error="form.errors.actividad_id"
-                    >
-                        <CampoSelect
-                            id="actividad_id"
-                            v-model="form.actividad_id"
-                            :opciones="opciones.actividades"
-                            vacio="Selecciona un tipo"
-                        />
-                    </CampoFormulario>
                     <CampoFormulario
                         id="nombre_actividad"
                         etiqueta="Nombre de la actividad"
@@ -269,6 +402,46 @@ const textarea =
                         />
                     </CampoFormulario>
                     <CampoFormulario
+                        id="licenciatura_id"
+                        etiqueta="Licenciatura"
+                        :error="form.errors.licenciatura_id"
+                    >
+                        <!-- Edición del directivo: la licenciatura es de solo lectura (Laravel también
+                             rechaza cualquier cambio; ver ReservaRequest y ReservaService). -->
+                        <template v-if="anticipacion.excepcion_directivo">
+                            <p
+                                id="licenciatura_id"
+                                class="flex min-h-9 items-center rounded-md border border-input bg-muted px-3 py-1 text-sm"
+                                aria-readonly="true"
+                            >
+                                {{ licenciaturaActual }}
+                            </p>
+                            <p class="text-xs text-muted-foreground">
+                                El directivo no puede cambiar la licenciatura de
+                                la solicitud.
+                            </p>
+                        </template>
+                        <CampoSelect
+                            v-else
+                            id="licenciatura_id"
+                            v-model="form.licenciatura_id"
+                            :opciones="opciones.licenciaturas"
+                            vacio="Selecciona una licenciatura"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
+                        id="actividad_id"
+                        etiqueta="Tipo de actividad"
+                        :error="form.errors.actividad_id"
+                    >
+                        <CampoSelect
+                            id="actividad_id"
+                            v-model="form.actividad_id"
+                            :opciones="opciones.actividades"
+                            vacio="Selecciona un tipo"
+                        />
+                    </CampoFormulario>
+                    <CampoFormulario
                         id="cuatrimestre_id"
                         etiqueta="Cuatrimestre (opcional)"
                         :error="form.errors.cuatrimestre_id"
@@ -282,7 +455,7 @@ const textarea =
                     </CampoFormulario>
                     <CampoFormulario
                         id="asignatura_id"
-                        etiqueta="Asignatura (opcional)"
+                        etiqueta="Asignatura vinculada (opcional)"
                         :error="form.errors.asignatura_id"
                     >
                         <CampoSelect
@@ -306,23 +479,145 @@ const textarea =
                             <option value="ext">Extracurricular</option>
                         </select>
                     </CampoFormulario>
-                    <CampoFormulario
-                        id="promocion_redes"
-                        etiqueta="¿Promoción en redes?"
-                        :error="form.errors.promocion_redes"
+                </div>
+            </TarjetaSeccion>
+
+            <TarjetaSeccion
+                titulo="Espacios, fechas y horarios"
+                descripcion="Puedes guardar sin espacios; se exigen al enviar a administración. La disponibilidad mostrada es orientativa: se confirma al autorizar."
+            >
+                <template #acciones>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        @click="agregarDetalle"
                     >
-                        <select
-                            id="promocion_redes"
-                            v-model="form.promocion_redes"
-                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs md:text-sm"
-                        >
-                            <option value="no">No</option>
-                            <option value="si">Sí</option>
-                        </select>
-                    </CampoFormulario>
+                        <Plus class="size-4" />
+                        Agregar espacio
+                    </Button>
+                </template>
+
+                <p
+                    class="border-b border-border px-4 py-3 text-sm text-muted-foreground md:px-6"
+                >
+                    <template v-if="anticipacion.excepcion_directivo">
+                        Como directivo, los espacios nuevos o con otra fecha u
+                        horario solo deben ser a partir de hoy (<strong
+                            class="font-semibold text-foreground"
+                            >{{ fechaMinima }}</strong
+                        >); no aplica el mínimo de {{ anticipacion.dias }} días.
+                    </template>
+                    <template v-else-if="anticipacion.ya_enviada">
+                        Las fechas que ya enviaste se conservan. Si agregas un
+                        espacio o cambias el espacio, la fecha o el horario de
+                        uno, debe ser a partir del
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong>
+                        ({{ anticipacion.dias }} días de anticipación).
+                    </template>
+                    <template v-else>
+                        Para enviar la solicitud, cada espacio debe ser a partir
+                        del
+                        <strong class="font-semibold text-foreground">{{
+                            fechaMinima
+                        }}</strong>
+                        ({{ anticipacion.dias }} días de anticipación). Puedes
+                        guardar el borrador con otras fechas.
+                    </template>
+                </p>
+
+                <p
+                    v-if="form.detalles.length === 0"
+                    class="px-4 py-8 text-center text-sm text-muted-foreground"
+                >
+                    Aún no hay espacios en esta reserva.
+                </p>
+
+                <BloqueReserva
+                    v-for="(_, i) in form.detalles"
+                    :key="claves[i]"
+                    v-model:detalle="form.detalles[i]"
+                    :indice="i"
+                    :espacios="opciones.espacios"
+                    :docentes="opciones.docentes"
+                    :licenciatura-id="form.licenciatura_id"
+                    :reserva-id="reserva?.id ?? null"
+                    :traslapa-con="traslapesInternos[i]"
+                    :error="(campo: string) => errorDetalle(i, campo)"
+                    @duplicar="duplicarDetalle(i)"
+                    @quitar="quitarDetalle(i)"
+                />
+                <InputError class="px-4 pb-4" :message="form.errors.detalles" />
+            </TarjetaSeccion>
+
+            <TarjetaSeccion
+                titulo="Requerimientos por espacio"
+                descripcion="Resumen de lo solicitado. Los requerimientos y el material se capturan dentro de cada espacio."
+            >
+                <p
+                    v-if="resumenRequerimientos.length === 0"
+                    class="px-4 py-6 text-center text-sm text-muted-foreground"
+                >
+                    Elige un espacio para solicitar sus requerimientos.
+                </p>
+                <ul v-else class="divide-y divide-border text-sm">
+                    <li
+                        v-for="fila in resumenRequerimientos"
+                        :key="fila.clave"
+                        class="grid gap-1 p-4 md:grid-cols-3 md:gap-4 md:px-6"
+                    >
+                        <div>
+                            <p class="font-medium">
+                                Espacio {{ fila.bloque }}: {{ fila.espacio }}
+                            </p>
+                            <p v-if="fila.cuando" class="text-muted-foreground">
+                                {{ fila.cuando }}
+                            </p>
+                            <p
+                                v-if="fila.anticipacion"
+                                class="mt-1 flex items-start gap-1.5 text-amber-700 dark:text-amber-400"
+                            >
+                                <TriangleAlert
+                                    class="mt-0.5 size-4 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                <span v-if="anticipacion.excepcion_directivo"
+                                    >La fecha ya pasó: elige una a partir del
+                                    {{ fechaMinima }}.</span
+                                >
+                                <span v-else
+                                    >Cambia la fecha a partir del
+                                    {{ fechaMinima }}: se requieren
+                                    {{ anticipacion.dias }} días de anticipación
+                                    para enviarla.</span
+                                >
+                            </p>
+                        </div>
+                        <div class="md:col-span-2">
+                            <p v-if="fila.requerimientos.length">
+                                {{ fila.requerimientos.join(', ') }}
+                            </p>
+                            <p v-else class="text-muted-foreground italic">
+                                Sin requerimientos del catálogo.
+                            </p>
+                            <p
+                                v-if="fila.material"
+                                class="whitespace-pre-line text-muted-foreground"
+                            >
+                                Material: {{ fila.material }}
+                            </p>
+                        </div>
+                    </li>
+                </ul>
+            </TarjetaSeccion>
+
+            <TarjetaSeccion titulo="Información adicional">
+                <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
                     <CampoFormulario
                         id="costo_alumno"
-                        etiqueta="Costo por alumno (opcional)"
+                        etiqueta="Costo para el alumno (opcional)"
                         :error="form.errors.costo_alumno"
                     >
                         <Input
@@ -334,15 +629,18 @@ const textarea =
                         />
                     </CampoFormulario>
                     <CampoFormulario
-                        id="fecha_entrega_formato"
-                        etiqueta="Fecha de entrega del formato (opcional)"
-                        :error="form.errors.fecha_entrega_formato"
+                        id="promocion_redes"
+                        etiqueta="¿Promoción en redes sociales?"
+                        :error="form.errors.promocion_redes"
                     >
-                        <Input
-                            id="fecha_entrega_formato"
-                            v-model="form.fecha_entrega_formato"
-                            type="date"
-                        />
+                        <select
+                            id="promocion_redes"
+                            v-model="form.promocion_redes"
+                            class="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs md:text-sm"
+                        >
+                            <option value="no">No</option>
+                            <option value="si">Sí</option>
+                        </select>
                     </CampoFormulario>
                     <CampoFormulario
                         id="limite_min_usuarios"
@@ -372,44 +670,29 @@ const textarea =
             </TarjetaSeccion>
 
             <TarjetaSeccion
-                titulo="Espacios, fechas y horarios"
-                descripcion="Puedes guardar sin espacios; se exigen al enviar a administración. La disponibilidad mostrada es orientativa: se confirma al autorizar."
+                v-if="anticipacion.excepcion_directivo"
+                titulo="Motivo de la edición"
+                descripcion="Opcional. Se guarda en el historial junto con tu nombre, la fecha y el resumen de los cambios."
             >
-                <template #acciones>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        @click="agregarDetalle"
+                <div class="p-4 md:p-6">
+                    <CampoFormulario
+                        id="motivo_edicion"
+                        etiqueta="Motivo"
+                        :error="form.errors.motivo_edicion"
                     >
-                        <Plus class="size-4" />
-                        Agregar espacio
-                    </Button>
-                </template>
-
-                <p
-                    v-if="form.detalles.length === 0"
-                    class="px-4 py-8 text-center text-sm text-muted-foreground"
-                >
-                    Aún no hay espacios en esta reserva.
-                </p>
-
-                <BloqueReserva
-                    v-for="(_, i) in form.detalles"
-                    :key="claves[i]"
-                    v-model:detalle="form.detalles[i]"
-                    :indice="i"
-                    :espacios="opciones.espacios"
-                    :docentes="opciones.docentes"
-                    :licenciatura-id="form.licenciatura_id"
-                    :reserva-id="reserva?.id ?? null"
-                    :traslapa-con="traslapesInternos[i]"
-                    :error="(campo: string) => errorDetalle(i, campo)"
-                    @duplicar="duplicarDetalle(i)"
-                    @quitar="quitarDetalle(i)"
-                />
-                <InputError class="px-4 pb-4" :message="form.errors.detalles" />
+                        <textarea
+                            id="motivo_edicion"
+                            v-model="form.motivo_edicion"
+                            maxlength="1000"
+                            rows="3"
+                            :class="textarea"
+                            placeholder="Por ejemplo: se ajustó la fecha por disponibilidad del auditorio."
+                        />
+                    </CampoFormulario>
+                </div>
             </TarjetaSeccion>
+
+            <AutorizacionesReserva :casillas="casillasAutorizacion" />
 
             <div class="flex flex-wrap gap-3">
                 <Button

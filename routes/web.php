@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\UsuarioController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
 use App\Http\Controllers\EspacioController;
+use App\Http\Controllers\ImprimirReservaController;
 use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\RequerimientoController;
@@ -32,6 +33,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('reservas/{reserva}/transicion', ReservaTransicionController::class)
         ->middleware('throttle:30,1')
         ->name('reservas.transicion');
+    // Versión imprimible del Formato 10 (solo lectura; misma política que el detalle).
+    Route::get('reservas/{reserva}/imprimir', ImprimirReservaController::class)
+        ->whereNumber('reserva')
+        ->name('reservas.imprimir');
 
     // Notificaciones propias (tabla `notificaciones`).
     Route::get('notificaciones', [NotificacionController::class, 'index'])->name('notificaciones.index');

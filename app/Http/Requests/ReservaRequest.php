@@ -52,7 +52,9 @@ class ReservaRequest extends FormRequest
         $detallesExistentes = $reserva instanceof Reserva ? $reserva->detalles()->pluck('id')->all() : [];
 
         return [
-            'licenciatura_id' => ['required', 'integer', Rule::in($user->licenciaturas()->pluck('licenciaturas.id')->all())],
+            'licenciatura_id' => ['required', 'integer', Rule::in($this->licenciaturasPermitidas($user, $reserva))],
+            // Motivo de la edición del directivo: solo se usa en esa operación (historial 'editada_admin').
+            'motivo_edicion' => ['nullable', 'string', 'max:1000'],
             // actividad_id es NOT NULL en la base: hasta un borrador necesita el tipo de actividad.
             'actividad_id' => ['required', 'integer', Rule::exists('actividades', 'id')->where('estatus', 'activa')],
             'nombre_actividad' => ['nullable', 'string', 'max:255'],
@@ -67,7 +69,8 @@ class ReservaRequest extends FormRequest
             'promocion_redes' => ['nullable', Rule::in(['si', 'no'])],
             'limite_min_usuarios' => ['nullable', 'integer', 'min:0'],
             'limite_max_usuarios' => ['nullable', 'integer', 'min:0', 'gte:limite_min_usuarios'],
-            'fecha_entrega_formato' => ['nullable', 'date_format:Y-m-d'],
+            // Sin reglas para folio, fecha_creacion ni fecha_entrega_formato: las asigna el servidor
+            // (al crear y al primer envío) y, al no validarse, nunca llegan a safe()/datosReserva().
 
             'detalles' => ['array', 'max:20'],
             'detalles.*.id' => ['nullable', 'integer', Rule::in($detallesExistentes)],
@@ -87,6 +90,30 @@ class ReservaRequest extends FormRequest
             'detalles.*.requerimientos.*.requerimiento_id' => ['required', 'integer'],
             'detalles.*.requerimientos.*.cantidad' => ['required', 'integer', 'min:1', 'max:100000'],
         ];
+    }
+
+    /**
+     * Licenciaturas que se pueden elegir. Docentes y coordinadores: solo las asignadas.
+     * El directivo, al editar (la política solo se lo permite en pendiente_admin), NO puede
+     * cambiar la licenciatura: solo se acepta la que ya tiene la reserva. Cambiarla podía dejar
+     * la solicitud con un coordinador elegido al azar o sin coordinador, o impedir que la
+     * docente la corrija y reenvíe. ReservaService lo vuelve a comprobar bajo bloqueo.
+     *
+     * @return list<int>
+     */
+    private function licenciaturasPermitidas(User $user, mixed $reserva): array
+    {
+        if ($this->esEdicionDelDirectivo($user, $reserva)) {
+            /** @var Reserva $reserva */
+            return [$reserva->licenciatura_id];
+        }
+
+        return array_values(array_map('intval', $user->licenciaturas()->pluck('licenciaturas.id')->all()));
+    }
+
+    private function esEdicionDelDirectivo(?User $user, mixed $reserva): bool
+    {
+        return $user !== null && $user->esAdministrador() && $reserva instanceof Reserva;
     }
 
     /**
@@ -146,7 +173,9 @@ class ReservaRequest extends FormRequest
     {
         return [
             'licenciatura_id.required' => 'Selecciona la licenciatura.',
-            'licenciatura_id.in' => 'Solo puedes registrar reservas de tus licenciaturas.',
+            'licenciatura_id.in' => $this->esEdicionDelDirectivo($this->user(), $this->route('reserva'))
+                ? 'El directivo no puede cambiar la licenciatura de la solicitud.'
+                : 'Solo puedes registrar reservas de tus licenciaturas.',
             'actividad_id.required' => 'Selecciona el tipo de actividad.',
             'actividad_id.exists' => 'El tipo de actividad no existe o ya no está vigente.',
             'asignatura_id.exists' => 'La asignatura no pertenece a la licenciatura seleccionada.',
@@ -174,7 +203,17 @@ class ReservaRequest extends FormRequest
      */
     public function datosReserva(): array
     {
-        return $this->safe()->except('detalles');
+        return $this->safe()->except(['detalles', 'motivo_edicion']);
+    }
+
+    /**
+     * Motivo de la edición del directivo (solo lo usa ReservaService en esa operación).
+     */
+    public function motivoEdicion(): ?string
+    {
+        $motivo = $this->safe()->input('motivo_edicion');
+
+        return is_string($motivo) && trim($motivo) !== '' ? trim($motivo) : null;
     }
 
     /**
