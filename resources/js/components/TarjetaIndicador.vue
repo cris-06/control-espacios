@@ -8,10 +8,12 @@ defineProps<{
 
 <template>
     <div
-        class="rounded-xl border border-t-[3px] border-border border-t-primary bg-card p-4 shadow-sm print:shadow-none"
+        class="rounded-xl border border-t-[3px] border-border border-t-primary bg-card p-3 shadow-sm sm:p-4 print:shadow-none"
     >
         <p class="text-sm font-medium text-muted-foreground">{{ titulo }}</p>
-        <p class="mt-1 text-3xl font-semibold tabular-nums">{{ valor }}</p>
+        <p class="mt-1 text-2xl font-semibold tabular-nums sm:text-3xl">
+            {{ valor }}
+        </p>
         <p v-if="descripcion" class="mt-1 text-xs text-muted-foreground">
             {{ descripcion }}
         </p>

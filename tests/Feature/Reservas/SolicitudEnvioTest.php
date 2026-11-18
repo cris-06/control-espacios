@@ -89,13 +89,22 @@ test('if sending is not possible the draft is kept and the reason is shown', fun
 
 test('if the strict checks fail when sending to administration the draft is kept with its errors', function () {
     $respuesta = $this->actingAs($this->coordinador)
-        ->post(route('reservas.store'), ($this->solicitud)(['enviar' => true], ['cantidad_alumnos' => 60]));
+        ->post(route('reservas.store'), ($this->solicitud)(['enviar' => true, 'objetivo' => '']));
 
     $reserva = Reserva::firstOrFail();
-    $respuesta->assertRedirect(route('reservas.show', $reserva))->assertSessionHasErrors('reserva.0');
+    // Vuelve al formulario: la falla en la lista general y debajo del campo correspondiente.
+    $respuesta->assertRedirect(route('reservas.edit', $reserva))
+        ->assertSessionHasErrors(['reserva.0', 'objetivo' => 'Falta el objetivo de la actividad.']);
 
-    expect($reserva->estado_id)->toBe(E::BORRADOR)
-        ->and(session('errors')->get('reserva.0')[0])->toContain('superan la capacidad');
+    expect($reserva->estado_id)->toBe(E::BORRADOR);
+});
+
+test('more students than the space admits is rejected when saving, under the students field', function () {
+    $this->actingAs($this->coordinador)
+        ->post(route('reservas.store'), ($this->solicitud)(['enviar' => true], ['cantidad_alumnos' => 60]))
+        ->assertSessionHasErrors('detalles.0.cantidad_alumnos');
+
+    expect(Reserva::query()->count())->toBe(0);
 });
 
 test('editing a request under correction can resend it', function () {

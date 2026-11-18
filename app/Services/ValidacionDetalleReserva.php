@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
+use App\Models\Espacio;
 use App\Models\Rol;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
 /**
  * Reglas de integridad de un bloque (reserva_detalles) que dependen de otros
- * datos: el docente responsable y los requerimientos del espacio. Se usan al
+ * datos: los alumnos que caben, el docente responsable y los requerimientos del espacio. Se usan al
  * guardar (ReservaRequest) y se vuelven a aplicar en las validaciones estrictas,
  * porque el catálogo puede cambiar entre el guardado y el envío.
  */
@@ -27,6 +28,28 @@ class ValidacionDetalleReserva
 
         if (! $docente->perteneceALicenciatura($licenciaturaId)) {
             return 'El docente responsable no pertenece a la licenciatura de la reserva.';
+        }
+
+        return null;
+    }
+
+    /**
+     * Los alumnos no pueden superar la capacidad del espacio ni su máximo de alumnos.
+     */
+    public function errorAlumnos(int $espacioId, int $cantidad): ?string
+    {
+        $espacio = Espacio::query()->find($espacioId, ['id', 'nombre', 'capacidad', 'maximo_alumnos']);
+
+        if ($espacio === null) {
+            return null;
+        }
+
+        $limites = array_filter([$espacio->capacidad, $espacio->maximo_alumnos], fn (?int $l): bool => $l !== null && $l > 0);
+
+        if ($limites !== [] && $cantidad > min($limites)) {
+            $limite = min($limites);
+
+            return "Son {$cantidad} alumnos y {$espacio->nombre} admite como máximo {$limite}.";
         }
 
         return null;

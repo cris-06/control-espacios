@@ -39,7 +39,7 @@ const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
         descripcion="Resumen de tus reservaciones y pendientes."
     >
         <div
-            class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+            class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4"
             aria-label="Indicadores"
         >
             <TarjetaIndicador

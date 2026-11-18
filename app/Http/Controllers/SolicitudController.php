@@ -80,9 +80,13 @@ class SolicitudController extends Controller
     private function acciones(Reserva $reserva, User $user): array
     {
         $esAdmin = $user->esAdministrador();
-        $permitidas = $esAdmin
-            ? [ReservaWorkflowService::AUTORIZAR, ReservaWorkflowService::DENEGAR, ReservaWorkflowService::SOLICITAR_CORRECCION]
-            : ($user->esCoordinador() ? [ReservaWorkflowService::APROBAR] : []);
+        $permitidas = match (true) {
+            // El superadmin también hace la revisión de coordinación (ver ReservaPolicy::revisar).
+            $user->esSuperadmin() => [ReservaWorkflowService::APROBAR, ReservaWorkflowService::AUTORIZAR, ReservaWorkflowService::DENEGAR, ReservaWorkflowService::SOLICITAR_CORRECCION],
+            $esAdmin => [ReservaWorkflowService::AUTORIZAR, ReservaWorkflowService::DENEGAR, ReservaWorkflowService::SOLICITAR_CORRECCION],
+            $user->esCoordinador() => [ReservaWorkflowService::APROBAR],
+            default => [],
+        };
         $etiquetas = [
             ReservaWorkflowService::APROBAR => 'Enviar a directivo',
             ReservaWorkflowService::AUTORIZAR => 'Autorizar',

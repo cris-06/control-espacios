@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { useDisponibilidadBloque } from '@/composables/useDisponibilidadBloque';
+import { formatearFecha } from '@/lib/reservas';
 import type {
     DetalleEditable,
     DocenteOpcion,
@@ -38,6 +39,9 @@ const props = defineProps<{
     reservaId: number | null;
     // Números (1, 2, …) de otros bloques de esta solicitud con los que se traslapa.
     traslapaCon: number[];
+    // Primer día que se puede elegir (AAAA-MM-DD), o null si este bloque no debe cumplir
+    // la anticipación (fechas ya enviadas que no cambiaron).
+    fechaMinima: string | null;
     error: (campo: string) => string | undefined;
 }>();
 
@@ -160,12 +164,25 @@ const ayudaAlumnos = computed(() => {
     return partes.length ? `Espacio: ${partes.join(', ')}.` : null;
 });
 
-const excedeCapacidad = computed(
-    () =>
-        espacio.value?.capacidad != null &&
-        detalle.value.cantidad_alumnos !== '' &&
-        detalle.value.cantidad_alumnos > espacio.value.capacidad,
-);
+// Mismo límite que valida Laravel al guardar (ValidacionDetalleReserva::errorAlumnos): la
+// capacidad del espacio y su máximo de alumnos, el menor de los dos. Aquí solo se avisa antes.
+const errorAlumnos = computed(() => {
+    const e = espacio.value;
+    const cantidad = detalle.value.cantidad_alumnos;
+    const limites = [e?.capacidad, e?.maximo_alumnos].filter(
+        (l): l is number => typeof l === 'number' && l > 0,
+    );
+
+    if (!e || cantidad === '' || limites.length === 0) {
+        return null;
+    }
+
+    const limite = Math.min(...limites);
+
+    return cantidad > limite
+        ? `Son ${cantidad} alumnos y ${e.nombre} admite como máximo ${limite}.`
+        : null;
+});
 
 const { estado } = useDisponibilidadBloque(
     () => ({
@@ -251,12 +268,17 @@ const avisoChoque = (c: {
             :error="error('fecha')"
             class="md:col-span-2"
         >
+            <!-- Los días antes de la anticipación mínima quedan bloqueados en el selector. -->
             <Input
                 :id="`fecha-${indice}`"
                 v-model="detalle.fecha"
                 type="date"
+                :min="fechaMinima ?? undefined"
                 required
             />
+            <p v-if="fechaMinima" class="text-xs text-muted-foreground">
+                Disponible a partir del {{ formatearFecha(fechaMinima) }}.
+            </p>
         </CampoFormulario>
         <CampoFormulario
             :id="`inicio-${indice}`"
@@ -384,7 +406,7 @@ const avisoChoque = (c: {
         <CampoFormulario
             :id="`alumnos-${indice}`"
             etiqueta="Cantidad de alumnos"
-            :error="error('cantidad_alumnos')"
+            :error="error('cantidad_alumnos') ?? errorAlumnos ?? undefined"
             class="md:col-span-2"
         >
             <Input
@@ -395,10 +417,6 @@ const avisoChoque = (c: {
             />
             <p v-if="ayudaAlumnos" class="text-xs text-muted-foreground">
                 {{ ayudaAlumnos }}
-            </p>
-            <p v-if="excedeCapacidad" class="text-xs text-amber-700">
-                Supera la capacidad del espacio; se rechazará al enviar a
-                administración.
             </p>
         </CampoFormulario>
         <CampoFormulario

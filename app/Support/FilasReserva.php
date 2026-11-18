@@ -12,9 +12,13 @@ use App\Models\ReservaDetalle;
  */
 class FilasReserva
 {
-    /** Relaciones que necesitan las filas. */
+    /**
+     * Relaciones que necesitan las filas. El creador lleva su rol: las acciones del listado
+     * (ReservaWorkflowService::disponibles) preguntan si coordina la licenciatura.
+     */
     public const RELACIONES_RESERVA = [
-        'creador:id,nombre,apellido_paterno,apellido_materno',
+        'creador:id,nombre,apellido_paterno,apellido_materno,rol_id',
+        'creador.rol:id,nombre,nivel',
         'licenciatura:id,nombre',
         'actividad:id,nombre',
     ];

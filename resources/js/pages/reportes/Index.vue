@@ -11,7 +11,7 @@ import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { formatearFecha, sinVacios } from '@/lib/reservas';
-import { index } from '@/routes/reportes';
+import { imprimir as rutaImprimir, index } from '@/routes/reportes';
 import type { Opcion, Reserva, Total } from '@/types';
 
 type Filtros = {
@@ -67,7 +67,12 @@ const consultar = () => {
     });
 };
 
-const imprimir = () => window.print();
+// Abre la versión imprimible (membrete del CUV, papel carta) con los filtros ya aplicados.
+const imprimir = () =>
+    window.open(
+        rutaImprimir.url({ query: sinVacios({ ...props.filtros }) }),
+        '_blank',
+    );
 </script>
 
 <template>
@@ -165,7 +170,7 @@ const imprimir = () => window.print();
         </TarjetaSeccion>
 
         <template v-if="!hayErrores">
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
                 <TarjetaIndicador
                     titulo="Total de reservaciones"
                     :valor="resultados.length"

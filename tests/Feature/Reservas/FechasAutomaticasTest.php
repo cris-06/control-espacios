@@ -216,7 +216,8 @@ test('a rejected save and send keeps the draft saved without a delivery date', f
     // Sin la clave `requerimientos` se conservan los ya guardados (el guardado sí pasa).
     unset($datos['detalles'][0]['requerimientos']);
 
-    $this->actingAs($this->docente)->put(route('reservas.update', $reserva), $datos)->assertRedirect(route('reservas.show', $reserva));
+    // Vuelve al formulario de edición para corregir (el borrador sigue editable).
+    $this->actingAs($this->docente)->put(route('reservas.update', $reserva), $datos)->assertRedirect(route('reservas.edit', $reserva));
 
     expect($reserva->refresh()->estado_id)->toBe(E::BORRADOR)
         ->and(($this->fechas)($reserva)[1])->toBeNull();

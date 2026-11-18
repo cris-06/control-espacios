@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Menu } from '@lucide/vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import BotonEncabezado from '@/components/BotonEncabezado.vue';
@@ -7,8 +7,10 @@ import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import MenuNotificaciones from '@/components/MenuNotificaciones.vue';
 import MenuPerfil from '@/components/MenuPerfil.vue';
 import { useSidebar } from '@/components/ui/sidebar';
+import { etiquetaRol } from '@/lib/reservas';
 import { dashboard } from '@/routes';
 import type { BreadcrumbItem } from '@/types';
+import { computed } from 'vue';
 
 withDefaults(
     defineProps<{
@@ -20,6 +22,10 @@ withDefaults(
 );
 
 const { toggleSidebar } = useSidebar();
+
+// En celular la etiqueta del rol (MenuPerfil) no cabe: se muestra bajo el título.
+const page = usePage();
+const rol = computed(() => etiquetaRol(page.props.auth.rol?.nombre));
 </script>
 
 <template>
@@ -44,6 +50,9 @@ const { toggleSidebar } = useSidebar();
                 </span>
                 <span class="hidden truncate text-xs sm:block">
                     Centro Universitario de Valladolid
+                </span>
+                <span v-if="rol" class="truncate text-xs sm:hidden">
+                    {{ rol }}
                 </span>
             </span>
         </Link>

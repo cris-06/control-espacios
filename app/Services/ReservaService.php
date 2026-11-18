@@ -135,9 +135,10 @@ class ReservaService
                 }
             }
 
+            // El superadmin que edita en la etapa de coordinación cuenta como coordinación.
             $esCoordinadorAjeno = ! $esDirectivo
                 && $actual->usuario_creador_id !== $editor->id
-                && $editor->coordinaLicenciatura($licenciaturaAnterior);
+                && ($editor->coordinaLicenciatura($licenciaturaAnterior) || $editor->esSuperadmin());
 
             if ($esCoordinadorAjeno && ($camposCambiados !== [] || $detallesCambiaron)) {
                 $actual->historial()->create([
@@ -182,10 +183,9 @@ class ReservaService
         $etiquetas = [
             'licenciatura_id' => 'licenciatura', 'actividad_id' => 'tipo de actividad',
             'nombre_actividad' => 'nombre de la actividad', 'objetivo' => 'objetivo',
-            'tipo_formato' => 'tipo de formato', 'cuatrimestre_id' => 'cuatrimestre',
-            'asignatura_id' => 'asignatura', 'costo_alumno' => 'costo por alumno',
-            'promocion_redes' => 'promoción en redes', 'limite_min_usuarios' => 'mínimo de participantes',
-            'limite_max_usuarios' => 'máximo de participantes',
+            'tipo_formato' => 'tipo de formato', 'cuatrimestres' => 'cuatrimestres',
+            'asignaturas' => 'asignaturas', 'costo_alumno' => 'costo por alumno',
+            'promocion_redes' => 'promoción en redes',
         ];
 
         $partes = array_values(array_filter(array_map(fn (string $campo) => $etiquetas[$campo] ?? null, $campos)));
@@ -278,7 +278,9 @@ class ReservaService
     }
 
     /**
-     * La base exige objetivo NOT NULL: un borrador sin objetivo se guarda vacío.
+     * La base exige objetivo NOT NULL: un borrador sin objetivo se guarda vacío. Los
+     * cuatrimestres se guardan ordenados (y sus grupos en orden alfabético) y las listas vacías
+     * como NULL, para que reenviar lo mismo no cuente como cambio en el historial.
      *
      * @param  array<string, mixed>  $datos
      * @return array<string, mixed>
@@ -286,6 +288,22 @@ class ReservaService
     private function limpiar(array $datos): array
     {
         $datos['objetivo'] = trim((string) ($datos['objetivo'] ?? ''));
+
+        if (array_key_exists('cuatrimestres', $datos)) {
+            $cuatrimestres = array_map(function (mixed $c): array {
+                $grupos = array_map('strval', (array) ($c['grupos'] ?? []));
+                sort($grupos);
+
+                return ['id' => (int) $c['id'], 'grupos' => $grupos];
+            }, array_values((array) $datos['cuatrimestres']));
+            usort($cuatrimestres, fn (array $a, array $b): int => $a['id'] <=> $b['id']);
+            $datos['cuatrimestres'] = $cuatrimestres === [] ? null : $cuatrimestres;
+        }
+
+        if (array_key_exists('asignaturas', $datos)) {
+            $asignaturas = array_values(array_map('strval', (array) $datos['asignaturas']));
+            $datos['asignaturas'] = $asignaturas === [] ? null : $asignaturas;
+        }
 
         return $datos;
     }

@@ -1,3 +1,5 @@
+import type { NombreRol } from '@/types';
+
 const formatoFecha = new Intl.DateTimeFormat('es-MX', {
     day: 'numeric',
     month: 'short',
@@ -124,5 +126,24 @@ export function etiquetaAccion(accion: {
                 : 'Enviar a coordinación';
         default:
             return accion.etiqueta;
+    }
+}
+
+/**
+ * Nombre visible de cada rol: administración se presenta como «Directivo», igual que en el
+ * flujo («Enviar a directivo»).
+ */
+export function etiquetaRol(rol: NombreRol | null | undefined): string {
+    switch (rol) {
+        case 'superadmin':
+            return 'Superadministrador';
+        case 'admin':
+            return 'Directivo';
+        case 'coordinador':
+            return 'Coordinador';
+        case 'docente':
+            return 'Docente';
+        default:
+            return '';
     }
 }

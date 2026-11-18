@@ -220,8 +220,8 @@ test('capacity, schedule and requirements are still validated', function () {
     $antes = ($this->foto)($r);
     $id = ($this->detalleId)($r);
 
-    // Capacidad (100) superada.
-    ($this->editar)($this->admin, $r, [($this->bloque)('2026-11-17', ['id' => $id, 'cantidad_alumnos' => 150])])->assertSessionHasErrors('reserva.0');
+    // Capacidad (100) superada: se rechaza al validar el formulario, bajo el campo de alumnos.
+    ($this->editar)($this->admin, $r, [($this->bloque)('2026-11-17', ['id' => $id, 'cantidad_alumnos' => 150])])->assertSessionHasErrors('detalles.0.cantidad_alumnos');
     // Hora final anterior a la inicial.
     ($this->editar)($this->admin, $r, [($this->bloque)('2026-11-17', ['id' => $id, 'hora_inicio' => '12:00', 'hora_fin' => '10:00'])])->assertSessionHasErrors('detalles.0.hora_fin');
     // Más requerimientos de los disponibles (2).

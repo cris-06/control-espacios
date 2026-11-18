@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
-import { Plus, Send, TriangleAlert } from '@lucide/vue';
+import { Plus, Send, TriangleAlert, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
 import BloqueReserva from '@/components/BloqueReserva.vue';
@@ -19,6 +19,7 @@ import { index as solicitudes } from '@/routes/solicitudes';
 import type {
     AnticipacionEnvio,
     CasillaAutorizacion,
+    CuatrimestreGrupos,
     DetalleEditable,
     OpcionesReserva,
     ReservaFormulario,
@@ -121,16 +122,12 @@ const form = useForm({
     nombre_actividad: props.reserva?.nombre_actividad ?? '',
     objetivo: props.reserva?.objetivo ?? '',
     tipo_formato: props.reserva?.tipo_formato ?? 'normal',
-    cuatrimestre_id: aTexto(props.reserva?.cuatrimestre_id),
-    asignatura_id: aTexto(props.reserva?.asignatura_id),
+    cuatrimestres: (props.reserva?.cuatrimestres ?? []).map(
+        (c): CuatrimestreGrupos => ({ id: c.id, grupos: [...c.grupos] }),
+    ),
+    asignaturas: [...(props.reserva?.asignaturas ?? [])] as string[],
     costo_alumno: props.reserva?.costo_alumno ?? '',
     promocion_redes: props.reserva?.promocion_redes ?? 'no',
-    limite_min_usuarios: (props.reserva?.limite_min_usuarios ?? '') as
-        | number
-        | '',
-    limite_max_usuarios: (props.reserva?.limite_max_usuarios ?? '') as
-        | number
-        | '',
     // Solo la usa el servidor en la edición del directivo (historial «editada_admin»).
     motivo_edicion: '',
     // folio, fecha_creacion y fecha_entrega_formato no se envían: los fija el servidor.
@@ -145,13 +142,106 @@ const form = useForm({
     enviar: false,
 });
 
-const asignaturas = computed(() =>
-    props.opciones.asignaturas.filter(
-        (a) =>
-            String(a.licenciatura_id) === form.licenciatura_id &&
-            (!form.cuatrimestre_id ||
-                String(a.cuatrimestre_id) === form.cuatrimestre_id),
-    ),
+// Si se llega aquí tras un «Guardar y enviar» que falló, el servidor redirige con los errores:
+// se cargan en el formulario para mostrarlos debajo de cada campo.
+form.setError(page.props.errors as Record<string, string>);
+
+// Periodo cuatrimestral: cuatrimestres marcados y, por cada uno, sus grupos (A, B, C, …).
+// Se ofrecen de la A a la C (o hasta el último grupo elegido) y «+ Grupo» agrega la siguiente letra.
+const LETRAS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const gruposExtra = ref<Record<number, number>>({});
+const buscarCuatrimestre = (id: number) =>
+    form.cuatrimestres.find((c) => c.id === id);
+const marcado = (id: number) => buscarCuatrimestre(id) !== undefined;
+const tieneGrupo = (id: number, letra: string) =>
+    buscarCuatrimestre(id)?.grupos.includes(letra) ?? false;
+const letrasDe = (id: number) => {
+    const ultimo = Math.max(
+        -1,
+        ...(buscarCuatrimestre(id)?.grupos ?? []).map((g) => LETRAS.indexOf(g)),
+    );
+
+    return LETRAS.slice(
+        0,
+        Math.min(26, Math.max(3, ultimo + 1) + (gruposExtra.value[id] ?? 0)),
+    ).split('');
+};
+const masGrupos = (id: number) => {
+    gruposExtra.value[id] = (gruposExtra.value[id] ?? 0) + 1;
+};
+const alternarCuatrimestre = (id: number) => {
+    if (marcado(id)) {
+        form.cuatrimestres = form.cuatrimestres.filter((c) => c.id !== id);
+    } else {
+        form.cuatrimestres.push({ id, grupos: [] });
+        form.cuatrimestres.sort((a, b) => a.id - b.id);
+    }
+};
+const alternarGrupo = (id: number, letra: string) => {
+    const cuatrimestre = buscarCuatrimestre(id);
+
+    if (!cuatrimestre) {
+        return;
+    }
+
+    cuatrimestre.grupos = tieneGrupo(id, letra)
+        ? cuatrimestre.grupos.filter((g) => g !== letra)
+        : [...cuatrimestre.grupos, letra].sort();
+};
+
+// Asignaturas escritas a mano. El catálogo de la licenciatura (y de los cuatrimestres
+// marcados) solo se ofrece como sugerencia; se puede escribir cualquier nombre.
+const sugerenciasAsignaturas = computed(() =>
+    props.opciones.asignaturas
+        .filter(
+            (a) =>
+                String(a.licenciatura_id) === form.licenciatura_id &&
+                (form.cuatrimestres.length === 0 ||
+                    marcado(a.cuatrimestre_id)) &&
+                !form.asignaturas.some(
+                    (n) => n.toLowerCase() === a.nombre.toLowerCase(),
+                ),
+        )
+        .map((a) => a.nombre),
+);
+const nuevaAsignatura = ref('');
+const agregarAsignatura = () => {
+    const nombre = nuevaAsignatura.value.trim().replace(/\s+/g, ' ');
+
+    if (
+        nombre !== '' &&
+        form.asignaturas.length < 10 &&
+        !form.asignaturas.some((n) => n.toLowerCase() === nombre.toLowerCase())
+    ) {
+        form.asignaturas.push(nombre);
+    }
+
+    nuevaAsignatura.value = '';
+};
+const quitarAsignatura = (i: number) => form.asignaturas.splice(i, 1);
+const errorAsignaturas = computed(
+    () =>
+        form.errors.asignaturas ??
+        Object.entries(form.errors).find(([clave]) =>
+            clave.startsWith('asignaturas.'),
+        )?.[1],
+);
+const errorCuatrimestres = computed(
+    () =>
+        form.errors.cuatrimestres ??
+        Object.entries(form.errors).find(([clave]) =>
+            clave.startsWith('cuatrimestres.'),
+        )?.[1],
+);
+
+// Fallas del envío que devuelve el servidor (reserva.0, reserva.1, …): se listan arriba; las
+// que corresponden a un campo también aparecen debajo de ese campo.
+const erroresEnvio = computed(() =>
+    Object.entries(form.errors as Record<string, string>)
+        .filter(
+            ([clave]) => clave === 'transicion' || clave.startsWith('reserva.'),
+        )
+        .map(([, mensaje]) => mensaje),
 );
 
 const errorDetalle = (i: number, campo: string) =>
@@ -271,6 +361,8 @@ const resumenRequerimientos = computed(() =>
 const guardar = (enviar = false) => {
     const opciones = { preserveScroll: true };
 
+    // Una asignatura escrita pero sin «Agregar» también se guarda.
+    agregarAsignatura();
     form.enviar = enviar;
     form.transform((datos) => ({
         ...datos,
@@ -327,6 +419,22 @@ const textarea =
         >
             Aún no hay tipos de actividad registrados. Pide al administrador que
             los dé de alta.
+        </div>
+
+        <div
+            v-if="erroresEnvio.length"
+            role="alert"
+            class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+            <p class="font-medium">
+                No se pudo enviar. Corrige lo siguiente (cada campo marcado
+                tiene su mensaje):
+            </p>
+            <ul class="mt-2 list-disc pl-5">
+                <li v-for="(mensaje, i) in erroresEnvio" :key="i">
+                    {{ mensaje }}
+                </li>
+            </ul>
         </div>
 
         <form class="grid gap-6" @submit.prevent="guardar()">
@@ -441,29 +549,133 @@ const textarea =
                             vacio="Selecciona un tipo"
                         />
                     </CampoFormulario>
+                    <fieldset class="grid gap-2 md:col-span-2">
+                        <legend class="mb-2 text-sm font-medium">
+                            Periodo cuatrimestral (opcional, puedes marcar
+                            varios)
+                        </legend>
+                        <p class="-mt-1 text-xs text-muted-foreground">
+                            Marca el cuatrimestre y, a su lado, los grupos que
+                            participan.
+                        </p>
+                        <ul
+                            class="divide-y divide-border rounded-md border border-input"
+                        >
+                            <li
+                                v-for="c in opciones.cuatrimestres"
+                                :key="c.id"
+                                class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2"
+                                :class="{ 'bg-secondary/60': marcado(c.id) }"
+                            >
+                                <label
+                                    class="flex w-48 cursor-pointer items-center gap-2 text-sm"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :checked="marcado(c.id)"
+                                        class="size-4 accent-rojo"
+                                        @change="alternarCuatrimestre(c.id)"
+                                    />
+                                    {{ c.nombre }}
+                                </label>
+                                <div
+                                    v-if="marcado(c.id)"
+                                    class="flex flex-wrap items-center gap-1.5"
+                                    role="group"
+                                    :aria-label="`Grupos de ${c.nombre}`"
+                                >
+                                    <span
+                                        class="mr-1 text-xs text-muted-foreground"
+                                        >Grupos:</span
+                                    >
+                                    <button
+                                        v-for="letra in letrasDe(c.id)"
+                                        :key="letra"
+                                        type="button"
+                                        class="h-7 min-w-9 rounded-md border px-2 text-xs font-semibold tabular-nums transition-colors"
+                                        :class="
+                                            tieneGrupo(c.id, letra)
+                                                ? 'border-rojo bg-rojo text-rojo-foreground'
+                                                : 'border-input bg-background hover:bg-accent'
+                                        "
+                                        :aria-pressed="tieneGrupo(c.id, letra)"
+                                        @click="alternarGrupo(c.id, letra)"
+                                    >
+                                        {{ c.numero }}{{ letra }}
+                                    </button>
+                                    <Button
+                                        v-if="letrasDe(c.id).length < 26"
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        class="h-7 px-2 text-xs"
+                                        :aria-label="`Agregar otro grupo a ${c.nombre}`"
+                                        @click="masGrupos(c.id)"
+                                    >
+                                        <Plus class="size-3.5" />
+                                        Grupo
+                                    </Button>
+                                </div>
+                            </li>
+                        </ul>
+                        <InputError :message="errorCuatrimestres" />
+                    </fieldset>
                     <CampoFormulario
-                        id="cuatrimestre_id"
-                        etiqueta="Cuatrimestre (opcional)"
-                        :error="form.errors.cuatrimestre_id"
+                        id="asignatura_nueva"
+                        etiqueta="Asignaturas vinculadas (opcional, puedes agregar varias)"
+                        :error="errorAsignaturas"
+                        class="md:col-span-2"
                     >
-                        <CampoSelect
-                            id="cuatrimestre_id"
-                            v-model="form.cuatrimestre_id"
-                            :opciones="opciones.cuatrimestres"
-                            vacio="Sin cuatrimestre"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="asignatura_id"
-                        etiqueta="Asignatura vinculada (opcional)"
-                        :error="form.errors.asignatura_id"
-                    >
-                        <CampoSelect
-                            id="asignatura_id"
-                            v-model="form.asignatura_id"
-                            :opciones="asignaturas"
-                            vacio="Sin asignatura"
-                        />
+                        <div class="flex gap-2">
+                            <Input
+                                id="asignatura_nueva"
+                                v-model="nuevaAsignatura"
+                                list="sugerencias_asignaturas"
+                                maxlength="150"
+                                placeholder="Escribe el nombre de la asignatura"
+                                :disabled="form.asignaturas.length >= 10"
+                                @keydown.enter.prevent="agregarAsignatura"
+                            />
+                            <datalist id="sugerencias_asignaturas">
+                                <option
+                                    v-for="nombre in sugerenciasAsignaturas"
+                                    :key="nombre"
+                                    :value="nombre"
+                                />
+                            </datalist>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                :disabled="
+                                    nuevaAsignatura.trim() === '' ||
+                                    form.asignaturas.length >= 10
+                                "
+                                @click="agregarAsignatura"
+                            >
+                                <Plus class="size-4" />
+                                Agregar
+                            </Button>
+                        </div>
+                        <ul
+                            v-if="form.asignaturas.length"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <li
+                                v-for="(nombre, i) in form.asignaturas"
+                                :key="nombre"
+                                class="flex items-center gap-1 rounded-full bg-secondary py-1 pr-1 pl-3 text-sm text-secondary-foreground"
+                            >
+                                {{ nombre }}
+                                <button
+                                    type="button"
+                                    class="rounded-full p-0.5 hover:bg-rojo/10"
+                                    :aria-label="`Quitar ${nombre}`"
+                                    @click="quitarAsignatura(i)"
+                                >
+                                    <X class="size-3.5" />
+                                </button>
+                            </li>
+                        </ul>
                     </CampoFormulario>
                     <CampoFormulario
                         id="tipo_formato"
@@ -545,6 +757,11 @@ const textarea =
                     :licenciatura-id="form.licenciatura_id"
                     :reserva-id="reserva?.id ?? null"
                     :traslapa-con="traslapesInternos[i]"
+                    :fecha-minima="
+                        debeCumplirAnticipacion(form.detalles[i])
+                            ? anticipacion.fecha_minima
+                            : null
+                    "
                     :error="(campo: string) => errorDetalle(i, campo)"
                     @duplicar="duplicarDetalle(i)"
                     @quitar="quitarDetalle(i)"
@@ -641,30 +858,6 @@ const textarea =
                             <option value="no">No</option>
                             <option value="si">Sí</option>
                         </select>
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="limite_min_usuarios"
-                        etiqueta="Mínimo de participantes (opcional)"
-                        :error="form.errors.limite_min_usuarios"
-                    >
-                        <Input
-                            id="limite_min_usuarios"
-                            v-model.number="form.limite_min_usuarios"
-                            type="number"
-                            min="0"
-                        />
-                    </CampoFormulario>
-                    <CampoFormulario
-                        id="limite_max_usuarios"
-                        etiqueta="Máximo de participantes (opcional)"
-                        :error="form.errors.limite_max_usuarios"
-                    >
-                        <Input
-                            id="limite_max_usuarios"
-                            v-model.number="form.limite_max_usuarios"
-                            type="number"
-                            min="0"
-                        />
                     </CampoFormulario>
                 </div>
             </TarjetaSeccion>

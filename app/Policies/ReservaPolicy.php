@@ -19,6 +19,8 @@ use Illuminate\Auth\Access\Response;
  * - Admin / superadmin: ven todo y deciden las que están en pendiente_admin; también pueden
  *   editarlas directamente mientras están en ese estado (sin el mínimo de 10 días, ver
  *   ReservaService::actualizar).
+ * - Superadmin: además puede hacer la revisión de coordinación de cualquier licenciatura
+ *   (editar y aprobar o devolver las que están en pendiente_coordinador).
  *
  * Las transiciones de estado en sí las valida ReservaWorkflowService (Fase 4);
  * esta policy decide si el usuario puede intentar la acción.
@@ -69,7 +71,8 @@ class ReservaPolicy
         // Antes, administración no cumplía ninguna de las condiciones de abajo (no crea reservas
         // y no coordina licenciaturas), así que docentes y coordinadores no cambian.
         if ($user->esAdministrador()) {
-            return $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN);
+            return $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN)
+                || ($user->esSuperadmin() && $reserva->enEstado(EstadoReserva::PENDIENTE_COORDINADOR));
         }
 
         if ($this->esCreador($user, $reserva) && $reserva->enEstado(...self::EDITABLES_POR_CREADOR)) {
@@ -116,7 +119,7 @@ class ReservaPolicy
      */
     public function revisar(User $user, Reserva $reserva): Response
     {
-        if (! $user->coordinaLicenciatura($reserva->licenciatura_id)) {
+        if (! $user->esSuperadmin() && ! $user->coordinaLicenciatura($reserva->licenciatura_id)) {
             return Response::deny('Solo el coordinador de la licenciatura puede revisar esta reserva.');
         }
 

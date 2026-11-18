@@ -7,6 +7,7 @@ use App\Models\EstadoReserva;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\User;
+use App\Services\AnticipacionReserva;
 use App\Support\FilasReserva;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -22,6 +23,8 @@ use Inertia\Response;
  */
 class DisponibilidadController extends Controller
 {
+    public function __construct(private readonly AnticipacionReserva $anticipacion) {}
+
     /** Solo estas reservas ocupan o pueden llegar a ocupar un espacio. */
     private const ESTADOS_EN_CALENDARIO = [
         EstadoReserva::PENDIENTE_COORDINADOR,
@@ -62,6 +65,11 @@ class DisponibilidadController extends Controller
             'errores' => array_map(fn (array $mensajes): string => $mensajes[0], $errores),
             'opcionesEspacios' => Espacio::query()->orderBy('nombre')->get(['id', 'nombre']),
             'espacios' => $errores === [] ? $this->consultar($request->user(), $filtros) : [],
+            'calendario' => $this->calendario(
+                $request->user(),
+                isset($errores['fecha']) ? Date::today()->toDateString() : $filtros['fecha'],
+                isset($errores['espacio_id']) ? null : $filtros['espacio_id'],
+            ),
         ]);
     }
 
@@ -71,22 +79,7 @@ class DisponibilidadController extends Controller
      */
     private function consultar(User $user, array $filtros): array
     {
-        $detalles = ReservaDetalle::query()
-            ->whereDate('fecha', $filtros['fecha'])
-            ->whereHas('reserva', fn ($q) => $q->whereIn('estado_id', self::ESTADOS_EN_CALENDARIO))
-            // Una reserva autorizada tiene todos sus detalles autorizados; los denegados no ocupan.
-            ->where(fn ($q) => $q->whereNull('estado_detalle')->orWhereIn('estado_detalle', [ReservaDetalle::PENDIENTE, ReservaDetalle::AUTORIZADA]))
-            ->with(['espacio:id,nombre', 'reserva' => fn ($q) => $q->with(FilasReserva::RELACIONES_RESERVA)])
-            ->orderBy('hora_inicio')
-            ->get();
-
-        $visibles = Reserva::query()
-            ->visiblesPara($user)
-            ->whereIn('id', $detalles->pluck('reserva_id')->unique())
-            ->pluck('id')
-            ->flip();
-
-        $bloques = $detalles->map(fn (ReservaDetalle $detalle): array => FilasReserva::deDetalle($detalle, $visibles->has($detalle->reserva_id)));
+        $bloques = $this->bloques($user, $filtros['fecha'], $filtros['fecha']);
 
         // Los espacios inactivos o en mantenimiento también se listan, como fuera de servicio.
         return Espacio::query()
@@ -109,6 +102,67 @@ class DisponibilidadController extends Controller
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * Vista mensual: las reservas de cada día del mes de la fecha consultada (con el mismo
+     * criterio de visibilidad que la agenda) y el primer día que se puede solicitar hoy;
+     * los anteriores aparecen bloqueados.
+     *
+     * @return array{mes: string, fecha_minima: string, dias_anticipacion: int, dias: array<string, array<int, array<string, mixed>>>}
+     */
+    private function calendario(User $user, string $fecha, mixed $espacioId): array
+    {
+        $inicio = Date::parse($fecha)->startOfMonth();
+        $colores = Espacio::query()->pluck('color_calendario', 'id');
+
+        $dias = $this->bloques($user, $inicio->toDateString(), $inicio->copy()->endOfMonth()->toDateString())
+            ->when($espacioId, fn (Collection $bloques, mixed $id) => $bloques->where('espacio_id', (int) $id))
+            ->groupBy('fecha')
+            ->map(fn (Collection $delDia): array => $delDia->map(fn (array $bloque): array => [
+                'id' => $bloque['id'],
+                'espacio' => $bloque['espacio'],
+                'color' => $colores[$bloque['espacio_id']] ?? '#dc2626',
+                'hora_inicio' => $bloque['hora_inicio'],
+                'hora_fin' => $bloque['hora_fin'],
+                'actividad' => $bloque['actividad'],
+                'estado_id' => $bloque['estado_id'],
+            ])->values()->all());
+
+        return [
+            'mes' => $inicio->format('Y-m'),
+            'fecha_minima' => $this->anticipacion->fechaMinima()->toDateString(),
+            'dias_anticipacion' => AnticipacionReserva::DIAS,
+            'dias' => $dias->all(),
+        ];
+    }
+
+    /**
+     * Bloques que ocupan (o pueden llegar a ocupar) un espacio entre dos fechas. De las
+     * reservas que el usuario no puede ver solo se sabe que el espacio está reservado.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function bloques(User $user, string $desde, string $hasta): Collection
+    {
+        $detalles = ReservaDetalle::query()
+            ->whereDate('fecha', '>=', $desde)
+            ->whereDate('fecha', '<=', $hasta)
+            ->whereHas('reserva', fn ($q) => $q->whereIn('estado_id', self::ESTADOS_EN_CALENDARIO))
+            // Una reserva autorizada tiene todos sus detalles autorizados; los denegados no ocupan.
+            ->where(fn ($q) => $q->whereNull('estado_detalle')->orWhereIn('estado_detalle', [ReservaDetalle::PENDIENTE, ReservaDetalle::AUTORIZADA]))
+            ->with(['espacio:id,nombre', 'reserva' => fn ($q) => $q->with(FilasReserva::RELACIONES_RESERVA)])
+            ->orderBy('fecha')
+            ->orderBy('hora_inicio')
+            ->get();
+
+        $visibles = Reserva::query()
+            ->visiblesPara($user)
+            ->whereIn('id', $detalles->pluck('reserva_id')->unique())
+            ->pluck('id')
+            ->flip();
+
+        return $detalles->map(fn (ReservaDetalle $detalle): array => FilasReserva::deDetalle($detalle, $visibles->has($detalle->reserva_id)));
     }
 
     /**

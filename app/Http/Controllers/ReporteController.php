@@ -8,6 +8,8 @@ use App\Models\Licenciatura;
 use App\Models\ReservaDetalle;
 use App\Models\User;
 use App\Support\FilasReserva;
+use Carbon\CarbonInterface;
+use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Date;
@@ -23,10 +25,78 @@ use Inertia\Response;
  */
 class ReporteController extends Controller
 {
+    private const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
     public function index(Request $request): Response
     {
         /** @var User $user */
         $user = $request->user();
+        [$filtros, $errores] = $this->filtros($request, $user);
+        $resultados = $errores === [] ? $this->consultar($user, $filtros) : collect();
+
+        return Inertia::render('reportes/Index', [
+            'filtros' => $filtros,
+            'errores' => array_map(fn (array $mensajes): string => $mensajes[0], $errores),
+            'opciones' => [
+                'espacios' => Espacio::query()->orderBy('nombre')->get(['id', 'nombre']),
+                'licenciaturas' => $user->licenciaturasConsultables()
+                    ->map(fn (Licenciatura $l): array => ['id' => $l->id, 'nombre' => $l->nombre])
+                    ->values(),
+                'estados' => EstadoReserva::opciones(),
+            ],
+            'resultados' => $resultados->values(),
+            'totalesEstado' => $this->totalesEstado($resultados),
+            'totalesEspacio' => $this->totalesEspacio($resultados),
+        ]);
+    }
+
+    /**
+     * Versión imprimible (papel carta con el membrete del CUV), con los mismos filtros y el
+     * mismo alcance que el listado. Solo muestra datos.
+     */
+    public function imprimir(Request $request): View
+    {
+        /** @var User $user */
+        $user = $request->user();
+        [$filtros, $errores] = $this->filtros($request, $user);
+
+        abort_if($errores !== [], 422, implode(' ', array_map(fn (array $m): string => $m[0], $errores)));
+
+        $resultados = $this->consultar($user, $filtros);
+        $fecha = fn (string $valor): string => $this->fechaLarga(Date::parse($valor));
+
+        return view('reportes.imprimir', [
+            'periodo' => $fecha($filtros['fecha_inicio']).' al '.$fecha($filtros['fecha_fin']),
+            'aplicados' => array_filter([
+                'Espacio' => $filtros['espacio_id'] ? Espacio::query()->whereKey((int) $filtros['espacio_id'])->value('nombre') : null,
+                'Licenciatura' => $filtros['licenciatura_id'] ? Licenciatura::query()->whereKey((int) $filtros['licenciatura_id'])->value('nombre') : null,
+                'Estado' => $filtros['estado_id'] ? EstadoReserva::etiqueta((int) $filtros['estado_id']) : null,
+            ]),
+            'generado' => $this->fechaLarga(Date::now()).', '.Date::now()->format('H:i'),
+            'elaboro' => $user->name,
+            'resultados' => $resultados->map(fn (array $fila): array => [
+                ...$fila,
+                'fecha_corta' => Date::parse($fila['fecha'])->format('d/m/Y'),
+            ])->values()->all(),
+            'totalesEstado' => $this->totalesEstado($resultados)->all(),
+            'totalesEspacio' => $this->totalesEspacio($resultados)->all(),
+            'volver' => route('reportes.index', array_filter($filtros)),
+        ]);
+    }
+
+    /** «18 de octubre de 2026» (mismos nombres de mes que el Formato 10). */
+    private function fechaLarga(CarbonInterface $fecha): string
+    {
+        return $fecha->day.' de '.self::MESES[$fecha->month - 1].' de '.$fecha->year;
+    }
+
+    /**
+     * Filtros de la consulta (con sus valores por omisión) y sus errores de validación.
+     *
+     * @return array{0: array<string, mixed>, 1: array<string, list<string>>}
+     */
+    private function filtros(Request $request, User $user): array
+    {
         $hoy = Date::today();
 
         $filtros = [
@@ -64,29 +134,34 @@ class ReporteController extends Controller
             'estado_id.in' => 'El estado seleccionado no existe.',
         ]);
 
+        /** @var array<string, list<string>> $errores */
         $errores = $validador->errors()->toArray();
-        $resultados = $errores === [] ? $this->consultar($user, $filtros) : collect();
 
-        return Inertia::render('reportes/Index', [
-            'filtros' => $filtros,
-            'errores' => array_map(fn (array $mensajes): string => $mensajes[0], $errores),
-            'opciones' => [
-                'espacios' => Espacio::query()->orderBy('nombre')->get(['id', 'nombre']),
-                'licenciaturas' => $user->licenciaturasConsultables()
-                    ->map(fn (Licenciatura $l): array => ['id' => $l->id, 'nombre' => $l->nombre])
-                    ->values(),
-                'estados' => EstadoReserva::opciones(),
-            ],
-            'resultados' => $resultados->values(),
-            'totalesEstado' => $resultados->countBy('estado_id')
-                ->sortKeys()
-                ->map(fn (int $total, int $id): array => ['nombre' => EstadoReserva::etiqueta($id), 'total' => $total])
-                ->values(),
-            'totalesEspacio' => $resultados->countBy('espacio')
-                ->sortDesc()
-                ->map(fn (int $total, string $nombre): array => ['nombre' => $nombre, 'total' => $total])
-                ->values(),
-        ]);
+        return [$filtros, $errores];
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $resultados
+     * @return Collection<int, array{nombre: string, total: int}>
+     */
+    private function totalesEstado(Collection $resultados): Collection
+    {
+        return $resultados->countBy('estado_id')
+            ->sortKeys()
+            ->map(fn (int $total, int $id): array => ['nombre' => EstadoReserva::etiqueta($id), 'total' => $total])
+            ->values();
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $resultados
+     * @return Collection<int, array{nombre: string, total: int}>
+     */
+    private function totalesEspacio(Collection $resultados): Collection
+    {
+        return $resultados->countBy('espacio')
+            ->sortDesc()
+            ->map(fn (int $total, string $nombre): array => ['nombre' => $nombre, 'total' => $total])
+            ->values();
     }
 
     /**

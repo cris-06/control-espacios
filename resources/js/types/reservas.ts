@@ -79,6 +79,25 @@ export type EspacioDisponibilidad = {
     bloques: Reserva[];
 };
 
+// Vista mensual de Disponibilidad: reservas por día (AAAA-MM-DD) del mes consultado.
+export type BloqueCalendario = {
+    id: number;
+    espacio: string;
+    color: string;
+    hora_inicio: string;
+    hora_fin: string;
+    actividad: string;
+    estado_id: number;
+};
+
+export type CalendarioMes = {
+    mes: string; // AAAA-MM
+    // Primer día que se puede solicitar hoy; los anteriores se muestran bloqueados.
+    fecha_minima: string;
+    dias_anticipacion: number;
+    dias: Record<string, BloqueCalendario[]>;
+};
+
 export type Total = {
     nombre: string;
     total: number;
@@ -164,12 +183,12 @@ export type ReservaFormulario = {
     nombre_actividad: string | null;
     objetivo: string;
     tipo_formato: 'normal' | 'ext' | null;
-    cuatrimestre_id: number | null;
-    asignatura_id: number | null;
+    // Periodo cuatrimestral: cada cuatrimestre marcado con sus grupos (A, B, C, …).
+    cuatrimestres: CuatrimestreGrupos[];
+    // Asignaturas escritas a mano (opcionales).
+    asignaturas: string[];
     costo_alumno: string | null;
     promocion_redes: 'si' | 'no' | null;
-    limite_min_usuarios: number | null;
-    limite_max_usuarios: number | null;
     // Fechas automáticas del servidor (solo lectura): elaboración al crear (ISO 8601)
     // y entrega al primer envío (AAAA-MM-DD, null mientras no se envíe).
     fecha_creacion: string | null;
@@ -181,7 +200,8 @@ export type ReservaFormulario = {
 export type OpcionesReserva = {
     licenciaturas: Opcion[];
     actividades: Opcion[];
-    cuatrimestres: Opcion[];
+    cuatrimestres: (Opcion & { numero: number })[];
+    // Catálogo de asignaturas: solo se usa como sugerencias al escribirlas a mano.
     asignaturas: (Opcion & {
         licenciatura_id: number;
         cuatrimestre_id: number;
@@ -289,4 +309,9 @@ export type Notificacion = {
     leida: boolean;
     reserva_id: number | null;
     fecha: string | null;
+};
+
+export type CuatrimestreGrupos = {
+    id: number;
+    grupos: string[];
 };

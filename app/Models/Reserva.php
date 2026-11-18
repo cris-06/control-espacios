@@ -23,8 +23,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $folio
  * @property string|null $folio_institucional
  * @property string $objetivo
- * @property int|null $cuatrimestre_id
- * @property int|null $asignatura_id
+ * @property int|null $cuatrimestre_id anterior a la selección múltiple; el formulario usa $cuatrimestres
+ * @property list<array{id: int, grupos: list<string>}>|null $cuatrimestres cuatrimestres marcados y sus grupos
+ * @property int|null $asignatura_id anterior a la captura libre; el formulario usa $asignaturas
+ * @property list<string>|null $asignaturas asignaturas escritas a mano
  * @property int $estado_id
  * @property string|null $observaciones_admin
  * @property string|null $tipo_formato
@@ -51,7 +53,7 @@ class Reserva extends Model
     // (ReservaService::crear y el primer envío en ReservaWorkflowService::ejecutar).
     protected $fillable = [
         'actividad_id', 'licenciatura_id', 'tipo_formato', 'nombre_actividad', 'objetivo',
-        'cuatrimestre_id', 'asignatura_id', 'costo_alumno', 'promocion_redes',
+        'cuatrimestre_id', 'cuatrimestres', 'asignatura_id', 'asignaturas', 'costo_alumno', 'promocion_redes',
         'limite_min_usuarios', 'limite_max_usuarios',
     ];
 
@@ -69,6 +71,8 @@ class Reserva extends Model
             'licenciatura_id' => 'integer',
             'cuatrimestre_id' => 'integer',
             'asignatura_id' => 'integer',
+            'cuatrimestres' => 'array',
+            'asignaturas' => 'array',
             'estado_id' => 'integer',
             'costo_alumno' => 'decimal:2',
             'limite_min_usuarios' => 'integer',
@@ -134,6 +138,30 @@ class Reserva extends Model
     }
 
     /**
+     * Periodo cuatrimestral como se escribe en el Formato 10: cada grupo con su cuatrimestre
+     * (1A, 1B, 3B, …) y, si un cuatrimestre no tiene grupos, su nombre. En orden de cuatrimestre.
+     *
+     * @return list<string>
+     */
+    public function periodoCuatrimestral(): array
+    {
+        if (empty($this->cuatrimestres)) {
+            return [];
+        }
+
+        $grupos = collect($this->cuatrimestres)->mapWithKeys(fn (array $c): array => [(int) $c['id'] => $c['grupos']]);
+
+        return array_values(Cuatrimestre::query()
+            ->whereKey($grupos->keys()->all())
+            ->orderBy('numero')
+            ->get(['id', 'numero', 'nombre'])
+            ->flatMap(fn (Cuatrimestre $c): array => $grupos[$c->id] === []
+                ? [$c->nombre]
+                : array_map(fn (string $grupo): string => $c->numero.$grupo, $grupos[$c->id]))
+            ->all());
+    }
+
+    /**
      * @return HasMany<ReservaDetalle, $this>
      */
     public function detalles(): HasMany
@@ -184,13 +212,20 @@ class Reserva extends Model
     /**
      * Reservas que esperan una acción de este usuario: el docente, sus borradores y
      * correcciones; el coordinador, las de sus licenciaturas pendientes de revisión;
-     * administración, las pendientes de autorizar.
+     * administración, las pendientes de autorizar; el superadmin, además, las pendientes de
+     * coordinación (también puede revisarlas, ver ReservaPolicy::revisar).
      *
      * @param  Builder<Reserva>  $query
      */
     public function scopePorAtender(Builder $query, User $user): void
     {
         $query->visiblesPara($user);
+
+        if ($user->esSuperadmin()) {
+            $query->whereIn('estado_id', [EstadoReserva::PENDIENTE_COORDINADOR, EstadoReserva::PENDIENTE_ADMIN]);
+
+            return;
+        }
 
         if ($user->esAdministrador()) {
             $query->where('estado_id', EstadoReserva::PENDIENTE_ADMIN);

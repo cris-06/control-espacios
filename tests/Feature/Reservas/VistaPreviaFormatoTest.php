@@ -43,7 +43,7 @@ beforeEach(function () {
     };
     $this->previa = fn (User $u, Reserva $r) => $this->actingAs($u)->get(route('reservas.imprimir', ['reserva' => $r, 'vista' => 'previa']));
     $this->hoja = function (string $html): string {
-        preg_match('#<div class="hoja">.*?</table>\s*</div>\s*(?=@|<style|</body>)#s', $html, $m);
+        preg_match('#<div class="hoja">.*?</table>\s*</div>\s*(?=@|<style|<script|</body>)#s', $html, $m);
 
         return trim($m[0] ?? '');
     };

@@ -49,6 +49,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // Coordinación y administración.
 Route::middleware(['auth', 'verified', 'rol:coordinador,admin,superadmin'])->group(function () {
     Route::get('reportes', [ReporteController::class, 'index'])->name('reportes.index');
+    // Versión imprimible con el membrete institucional (mismos filtros que el listado).
+    Route::get('reportes/imprimir', [ReporteController::class, 'imprimir'])->name('reportes.imprimir');
 });
 
 // Solo administración. Cada acción además pasa por UserPolicy / Gate 'administrar'.

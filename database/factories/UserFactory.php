@@ -5,6 +5,8 @@ namespace Database\Factories;
 use App\Models\Rol;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 /**
  * Genera registros para la tabla `usuarios`.
@@ -14,6 +16,8 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 class UserFactory extends Factory
 {
     protected $model = User::class;
+
+    protected static ?string $password;
 
     public function definition(): array
     {

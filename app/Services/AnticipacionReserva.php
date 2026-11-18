@@ -43,7 +43,7 @@ class AnticipacionReserva
     /**
      * Validación del envío (dentro de la transacción de ReservaWorkflowService::ejecutar).
      *
-     * @throws ValidationException con claves reserva.N
+     * @throws ValidationException con claves reserva.N (lista general) y detalles.N.fecha (bajo cada fecha)
      */
     public function validarEnvio(Reserva $reserva): void
     {
@@ -53,15 +53,22 @@ class AnticipacionReserva
         $minima = $this->fechaMinima()->toDateString();
         $hoy = Date::today()->toDateString();
         $mensajes = [];
+        $campos = [];
 
         foreach ($detalles->values() as $i => $detalle) {
             $fecha = $detalle->fecha->toDateString();
             $bloque = 'Espacio '.($i + 1).' ('.($detalle->espacio->nombre ?? 'sin espacio').', '.$detalle->fecha->format('d/m/Y').')';
 
-            if ($primerEnvio && $fecha < $minima) {
-                $mensajes[] = "$bloque: {$this->requisito()}";
-            } elseif (! $primerEnvio && $fecha < $hoy) {
-                $mensajes[] = "$bloque: la fecha ya pasó; cámbiala por una a partir del {$this->fechaMinima()->format('d/m/Y')}.";
+            $error = match (true) {
+                $primerEnvio && $fecha < $minima => ucfirst($this->requisito()),
+                ! $primerEnvio && $fecha < $hoy => "La fecha ya pasó; cámbiala por una a partir del {$this->fechaMinima()->format('d/m/Y')}.",
+                default => null,
+            };
+
+            if ($error !== null) {
+                $mensajes[] = "$bloque: ".mb_lcfirst($error);
+                // La misma falla bajo la fecha del bloque (el formulario los lista en este orden).
+                $campos["detalles.$i.fecha"] = $error;
             }
         }
 
@@ -72,7 +79,7 @@ class AnticipacionReserva
                 $porClave["reserva.$i"] = $mensaje;
             }
 
-            throw ValidationException::withMessages($porClave);
+            throw ValidationException::withMessages([...$porClave, ...$campos]);
         }
     }
 

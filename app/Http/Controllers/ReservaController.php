@@ -79,8 +79,6 @@ class ReservaController extends Controller
             'coordinador.rol:id,nombre',
             'licenciatura:id,nombre',
             'actividad:id,nombre',
-            'cuatrimestre:id,nombre',
-            'asignatura:id,nombre',
             'estado:id,nombre,descripcion',
             'detalles.espacio:id,nombre,ubicacion,capacidad',
             'detalles.docenteResponsable:id,nombre,apellido_paterno,apellido_materno',
@@ -102,8 +100,8 @@ class ReservaController extends Controller
                 'coordinador' => $reserva->coordinador?->name,
                 'licenciatura' => $reserva->licenciatura->nombre,
                 'actividad' => $reserva->actividad->nombre,
-                'cuatrimestre' => $reserva->cuatrimestre?->nombre,
-                'asignatura' => $reserva->asignatura?->nombre,
+                'cuatrimestre' => implode(', ', $reserva->periodoCuatrimestral()) ?: null,
+                'asignatura' => implode(', ', $reserva->asignaturas ?? []) ?: null,
                 'observaciones_admin' => $reserva->observaciones_admin,
                 'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => [
                     ...$this->datosDetalle($detalle),
@@ -239,6 +237,13 @@ class ReservaController extends Controller
             try {
                 $avisosEnvio = $this->workflow->ejecutar($reserva, $user, ReservaWorkflowService::ENVIAR);
             } catch (ValidationException $e) {
+                // De vuelta al formulario: cada falla aparece bajo su campo (y la lista completa arriba).
+                if ($user->can('update', $reserva->refresh())) {
+                    Inertia::flash('toast', ['type' => 'warning', 'message' => 'Se guardó la reserva, pero no se pudo enviar. Corrige los campos marcados.']);
+
+                    return to_route('reservas.edit', $reserva)->withErrors($e->errors());
+                }
+
                 Inertia::flash('toast', ['type' => 'warning', 'message' => 'Se guardó la reserva, pero no se pudo enviar. Revisa los pendientes.']);
 
                 return to_route('reservas.show', $reserva)->withErrors($e->errors());
@@ -272,12 +277,10 @@ class ReservaController extends Controller
             'nombre_actividad' => $reserva->nombre_actividad,
             'objetivo' => $reserva->objetivo,
             'tipo_formato' => $reserva->tipo_formato,
-            'cuatrimestre_id' => $reserva->cuatrimestre_id,
-            'asignatura_id' => $reserva->asignatura_id,
+            'cuatrimestres' => $reserva->cuatrimestres ?? [],
+            'asignaturas' => $reserva->asignaturas ?? [],
             'costo_alumno' => $reserva->costo_alumno,
             'promocion_redes' => $reserva->promocion_redes,
-            'limite_min_usuarios' => $reserva->limite_min_usuarios,
-            'limite_max_usuarios' => $reserva->limite_max_usuarios,
             // Fechas automáticas (solo lectura): elaboración al crear; entrega al primer envío.
             'fecha_creacion' => $reserva->fecha_creacion?->toIso8601String(),
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
@@ -390,7 +393,7 @@ class ReservaController extends Controller
         return [
             'licenciaturas' => $licenciaturas->map(fn ($l) => ['id' => $l->id, 'nombre' => $l->nombre]),
             'actividades' => Actividad::query()->where('estatus', 'activa')->orderBy('nombre')->get(['id', 'nombre']),
-            'cuatrimestres' => Cuatrimestre::query()->orderBy('numero')->get(['id', 'nombre']),
+            'cuatrimestres' => Cuatrimestre::query()->orderBy('numero')->get(['id', 'numero', 'nombre']),
             'asignaturas' => Asignatura::query()
                 ->whereIn('licenciatura_id', $licenciaturas->pluck('id'))
                 ->where('estatus', 'activa')

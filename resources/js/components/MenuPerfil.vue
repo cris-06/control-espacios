@@ -10,13 +10,22 @@ import {
 } from '@/components/ui/dropdown-menu';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useInitials } from '@/composables/useInitials';
+import { etiquetaRol } from '@/lib/reservas';
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
+const rol = computed(() => etiquetaRol(page.props.auth.rol?.nombre));
 const { getInitials } = useInitials();
 </script>
 
 <template>
+    <span
+        v-if="rol"
+        class="mr-1 hidden max-w-48 truncate rounded-full bg-white/15 px-2.5 py-1 text-xs font-medium ring-1 ring-white/40 sm:inline-block md:max-w-none"
+        data-test="rol-usuario"
+    >
+        {{ rol }}
+    </span>
     <DropdownMenu>
         <DropdownMenuTrigger as-child>
             <BotonEncabezado

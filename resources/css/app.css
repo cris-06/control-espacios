@@ -106,8 +106,8 @@
     --popover-foreground: hsl(225 25% 12%);
     --primary: hsl(225 75% 38%);
     --primary-foreground: hsl(0 0% 100%);
-    --secondary: #fdf1f3;
-    --secondary-foreground: #da153b;
+    --secondary: #f8eef0;
+    --secondary-foreground: #8b1a2b;
     --muted: hsl(225 30% 96%);
     --muted-foreground: hsl(225 8% 42%);
     --accent: hsl(225 70% 95%);
@@ -117,7 +117,7 @@
     --border: hsl(225 20% 90%);
     --input: hsl(225 15% 85%);
     --ring: hsl(225 75% 38%);
-    --rojo: #da153b;
+    --rojo: #8b1a2b;
     --rojo-foreground: hsl(0 0% 100%);
     --chart-1: hsl(12 76% 61%);
     --chart-2: hsl(173 58% 39%);

@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -31,7 +30,8 @@ use Illuminate\Notifications\Notifiable;
  */
 #[Fillable(['nombre', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'password', 'rol_id', 'estatus'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable{
+class User extends Authenticatable
+{
     use HasFactory, Notifiable;
 
     const CREATED_AT = 'fecha_registro';
@@ -128,6 +128,11 @@ class User extends Authenticatable{
     public function esAdministrador(): bool
     {
         return $this->tieneNivel(Rol::NIVEL_ADMIN);
+    }
+
+    public function esSuperadmin(): bool
+    {
+        return $this->tieneRol(Rol::SUPERADMIN);
     }
 
     public function esCoordinador(): bool

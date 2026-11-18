@@ -7,9 +7,12 @@ import {
     CircleCheck,
     CircleX,
     Clock,
+    MoveHorizontal,
 } from '@lucide/vue';
+import { useElementSize, useScroll } from '@vueuse/core';
 import type { Component } from 'vue';
-import { computed, reactive } from 'vue';
+import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
+import CalendarioMensual from '@/components/CalendarioMensual.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
@@ -26,6 +29,7 @@ import {
 } from '@/lib/reservas';
 import { index } from '@/routes/disponibilidad';
 import type {
+    CalendarioMes,
     EspacioDisponibilidad,
     Opcion,
     Reserva,
@@ -55,17 +59,40 @@ const props = defineProps<{
     errores: Partial<Record<keyof Filtros, string>>;
     opcionesEspacios: Opcion[];
     espacios: EspacioDisponibilidad[];
+    calendario: CalendarioMes;
 }>();
 
 const AUTORIZADA = 5;
+// La agenda muestra de 7:00 a 21:00 y se amplía si alguna reserva del día empieza antes o
+// termina después, para que ningún bloque quede fuera de la cuadrícula.
 const HORA_INICIAL = 7;
 const HORA_FINAL = 21;
-const horas = Array.from(
-    { length: HORA_FINAL - HORA_INICIAL },
-    (_, indice) => HORA_INICIAL + indice,
+// Ancho mínimo de cada hora (en rem); la columna de espacios mide --columna (w-36 / sm:w-52).
+const REM_POR_HORA = 2.75;
+const jornada = computed(() => {
+    const bloques = props.espacios.flatMap((espacio) => espacio.bloques);
+    const desde = Math.min(
+        HORA_INICIAL,
+        ...bloques.map((b) => Math.floor(aMinutos(b.hora_inicio) / 60)),
+    );
+    const hasta = Math.max(
+        HORA_FINAL,
+        ...bloques.map((b) => Math.ceil(aMinutos(b.hora_fin) / 60)),
+    );
+    const inicio = Math.max(0, desde);
+    const fin = Math.min(24, hasta);
+
+    return { inicio, fin, minutos: (fin - inicio) * 60 };
+});
+const horas = computed(() =>
+    Array.from(
+        { length: jornada.value.fin - jornada.value.inicio },
+        (_, indice) => jornada.value.inicio + indice,
+    ),
 );
-const inicioJornada = HORA_INICIAL * 60;
-const duracionJornada = (HORA_FINAL - HORA_INICIAL) * 60;
+const anchoAgenda = computed(
+    () => `calc(var(--columna) + ${horas.value.length * REM_POR_HORA}rem)`,
+);
 const alturaCarril = 44;
 
 const situaciones: Record<
@@ -103,6 +130,12 @@ const consultar = () => {
     });
 };
 
+// Desde el calendario: un día (o el primero de otro mes) pasa a ser la fecha consultada.
+const irAFecha = (fecha: string) => {
+    filtros.fecha = fecha;
+    consultar();
+};
+
 const cambiarDia = (dias: number) => {
     if (filtros.fecha) {
         filtros.fecha = sumarDias(filtros.fecha, dias);
@@ -114,9 +147,17 @@ const cambiarDia = (dias: number) => {
 const repartir = (bloques: Reserva[]) => {
     const finPorCarril: number[] = [];
 
+    const inicioJornada = jornada.value.inicio * 60;
+    const finJornada = jornada.value.fin * 60;
+    const duracionJornada = jornada.value.minutos;
+
     return bloques.map((bloque) => {
-        const inicio = aMinutos(bloque.hora_inicio);
-        const fin = aMinutos(bloque.hora_fin);
+        // Recortado a la jornada visible: nunca se dibuja fuera de la cuadrícula.
+        const inicio = Math.max(inicioJornada, aMinutos(bloque.hora_inicio));
+        const fin = Math.max(
+            inicio,
+            Math.min(finJornada, aMinutos(bloque.hora_fin)),
+        );
         let carril = finPorCarril.findIndex((finCarril) => finCarril <= inicio);
 
         if (carril === -1) {
@@ -144,6 +185,66 @@ const filas = computed(() =>
             carriles: Math.max(1, ...bloques.map(({ carril }) => carril + 1)),
         };
     }),
+);
+
+// --- Desplazamiento de la agenda: solo se mueve la línea de tiempo (la columna de espacios
+// queda fija y el resto de la página no se desplaza). ---
+const agenda = useTemplateRef<HTMLElement>('agenda');
+const { arrivedState } = useScroll(agenda);
+const { width: anchoVisible } = useElementSize(agenda);
+// Hay horas fuera de la vista: se muestran las flechas y el aviso. Se mide después de
+// dibujar (el ancho total de la línea de tiempo no es reactivo).
+const agendaDesborda = ref(false);
+watch(
+    [anchoVisible, () => horas.value.length],
+    async () => {
+        await nextTick();
+        const el = agenda.value;
+        agendaDesborda.value = !!el && el.scrollWidth > el.clientWidth + 1;
+    },
+    { flush: 'post' },
+);
+// Ancho de la columna fija de espacios (la tapa al desplazar).
+const anchoColumna = () =>
+    agenda.value?.querySelector<HTMLElement>('[data-columna-espacio]')
+        ?.offsetWidth ?? 0;
+const desplazarAgenda = (sentido: 1 | -1) => {
+    const el = agenda.value;
+
+    if (el) {
+        el.scrollBy({
+            left:
+                sentido *
+                Math.max(120, (el.clientWidth - anchoColumna()) * 0.8),
+            behavior: 'smooth',
+        });
+    }
+};
+
+// Al abrir un día, la agenda se coloca en la primera reserva para que se vea sin buscarla.
+watch(
+    filas,
+    async () => {
+        await nextTick();
+        const el = agenda.value;
+        const primera = Math.min(
+            ...filas.value.flatMap((f) => f.bloques.map((b) => b.izquierda)),
+        );
+
+        if (!el) {
+            return;
+        }
+
+        if (!Number.isFinite(primera)) {
+            el.scrollLeft = 0;
+
+            return;
+        }
+
+        const lineaDeTiempo = el.scrollWidth - anchoColumna();
+        el.scrollLeft = Math.max(0, (primera / 100) * lineaDeTiempo - 16);
+    },
+    { immediate: true, flush: 'post' },
 );
 
 const reservasDelDia = computed(() =>
@@ -243,15 +344,67 @@ const hayErrores = computed(() => Object.keys(props.errores).length > 0);
             </form>
         </TarjetaSeccion>
 
+        <TarjetaSeccion titulo="Calendario">
+            <CalendarioMensual
+                :calendario="calendario"
+                :seleccionada="hayErrores ? null : props.filtros.fecha"
+                @seleccionar="irAFecha"
+                @cambiar-mes="irAFecha"
+            />
+        </TarjetaSeccion>
+
         <template v-if="!hayErrores">
             <TarjetaSeccion titulo="Agenda del día">
-                <div class="overflow-x-auto">
-                    <div class="min-w-[56rem]">
+                <template v-if="agendaDesborda" #acciones>
+                    <div class="flex items-center gap-1">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="Horas anteriores"
+                            :disabled="arrivedState.left"
+                            @click="desplazarAgenda(-1)"
+                        >
+                            <ChevronLeft />
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="Horas siguientes"
+                            :disabled="arrivedState.right"
+                            @click="desplazarAgenda(1)"
+                        >
+                            <ChevronRight />
+                        </Button>
+                    </div>
+                </template>
+                <p
+                    v-if="agendaDesborda"
+                    class="flex items-center gap-1.5 border-b border-border px-4 py-2 text-xs text-muted-foreground"
+                >
+                    <MoveHorizontal
+                        class="size-3.5 shrink-0"
+                        aria-hidden="true"
+                    />
+                    Desliza la agenda o usa las flechas para ver más horas.
+                </p>
+                <div
+                    ref="agenda"
+                    class="[scrollbar-width:thin] [scrollbar-color:var(--color-rojo)_var(--color-muted)] overflow-x-auto overscroll-x-contain pb-1"
+                    tabindex="0"
+                    aria-label="Agenda del día, desplazable horizontalmente"
+                >
+                    <div
+                        class="[--columna:9rem] sm:[--columna:13rem]"
+                        :style="{ minWidth: anchoAgenda }"
+                    >
                         <div
                             class="flex border-b border-border bg-secondary text-xs font-semibold text-secondary-foreground"
                         >
                             <div
-                                class="w-52 shrink-0 px-4 py-2 tracking-wide uppercase"
+                                data-columna-espacio
+                                class="sticky left-0 z-10 w-36 shrink-0 bg-secondary px-3 py-2 tracking-wide uppercase shadow-[6px_0_8px_-6px_rgb(0_0_0/0.15)] sm:w-52 sm:px-4"
                             >
                                 Espacio
                             </div>
@@ -274,7 +427,9 @@ const hayErrores = computed(() => Object.keys(props.errores).length > 0);
                             :key="espacio.id"
                             class="flex border-b border-border last:border-b-0"
                         >
-                            <div class="w-52 shrink-0 px-4 py-2 text-sm">
+                            <div
+                                class="sticky left-0 z-10 w-36 shrink-0 bg-card px-3 py-2 text-sm shadow-[6px_0_8px_-6px_rgb(0_0_0/0.15)] sm:w-52 sm:px-4"
+                            >
                                 <p class="flex items-center gap-2 font-medium">
                                     <span
                                         class="size-2.5 shrink-0 rounded-full"
@@ -307,7 +462,7 @@ const hayErrores = computed(() => Object.keys(props.errores).length > 0);
                                 </Badge>
                             </div>
                             <div
-                                class="relative flex-1"
+                                class="relative flex-1 overflow-hidden"
                                 :class="{
                                     'bg-muted':
                                         espacio.situacion ===

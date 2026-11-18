@@ -263,23 +263,35 @@ class ReservaWorkflowService
     /**
      * Validaciones estrictas que se exigen al enviar a administración.
      *
+     * Cada falla va a la lista general (reserva.N, la que muestra el detalle) y, si corresponde
+     * a un campo, también bajo ese campo del formulario (nombre_actividad, detalles.N.fecha, …).
+     * Los bloques se recorren en el mismo orden en que el formulario de edición los muestra.
+     *
      * @throws ValidationException
      */
     public function validarCompleta(Reserva $reserva): void
     {
         $errores = [];
+        $campos = [];
+        $falla = function (string $mensaje, ?string $campo = null, ?string $bloque = null) use (&$errores, &$campos): void {
+            $errores[] = $bloque === null ? $mensaje : "$bloque: ".mb_lcfirst($mensaje);
+
+            if ($campo !== null) {
+                $campos[$campo] ??= $mensaje;
+            }
+        };
 
         $actividad = Actividad::query()->find($reserva->actividad_id);
         if ($actividad === null || $actividad->estatus !== 'activa') {
-            $errores[] = 'Selecciona un tipo de actividad vigente.';
+            $falla('Selecciona un tipo de actividad vigente.', 'actividad_id');
         }
 
         if (trim((string) $reserva->nombre_actividad) === '') {
-            $errores[] = 'Falta el nombre de la actividad.';
+            $falla('Falta el nombre de la actividad.', 'nombre_actividad');
         }
 
         if (trim($reserva->objetivo) === '') {
-            $errores[] = 'Falta el objetivo de la actividad.';
+            $falla('Falta el objetivo de la actividad.', 'objetivo');
         }
 
         if ($reserva->asignatura_id !== null) {
@@ -293,7 +305,7 @@ class ReservaWorkflowService
         $detalles = $reserva->detalles()->with(['espacio', 'requerimientosPedidos'])->get();
 
         if ($detalles->isEmpty()) {
-            $errores[] = 'Agrega al menos un espacio con fecha y horario.';
+            $falla('Agrega al menos un espacio con fecha y horario.', 'detalles');
         }
 
         $hoy = Date::today()->toDateString();
@@ -302,21 +314,21 @@ class ReservaWorkflowService
             $n = 'Espacio '.($i + 1);
 
             if ($detalle->espacio === null || ! $detalle->espacio->estaDisponible()) {
-                $errores[] = "$n: el espacio no está disponible (inactivo o en mantenimiento).";
+                $falla('El espacio no está disponible (inactivo o en mantenimiento).', "detalles.$i.espacio_id", $n);
             }
 
             if ($detalle->fecha->toDateString() < $hoy) {
-                $errores[] = "$n: la fecha ya pasó.";
+                $falla('La fecha ya pasó.', "detalles.$i.fecha", $n);
             }
 
             if ($detalle->hora_inicio >= $detalle->hora_fin) {
-                $errores[] = "$n: la hora de fin debe ser posterior a la de inicio.";
+                $falla('La hora de fin debe ser posterior a la de inicio.', "detalles.$i.hora_fin", $n);
             }
 
             if ($detalle->cantidad_alumnos === null || $detalle->cantidad_alumnos < 1) {
-                $errores[] = "$n: indica la cantidad de alumnos.";
+                $falla('Indica la cantidad de alumnos.', "detalles.$i.cantidad_alumnos", $n);
             } elseif ($detalle->espacio?->capacidad !== null && $detalle->cantidad_alumnos > $detalle->espacio->capacidad) {
-                $errores[] = "$n: {$detalle->cantidad_alumnos} alumnos superan la capacidad de {$detalle->espacio->nombre} ({$detalle->espacio->capacidad}).";
+                $falla("{$detalle->cantidad_alumnos} alumnos superan la capacidad de {$detalle->espacio->nombre} ({$detalle->espacio->capacidad}).", "detalles.$i.cantidad_alumnos", $n);
             }
 
             // El catálogo pudo cambiar desde que se guardó: se revalidan responsable y requerimientos.
@@ -324,22 +336,25 @@ class ReservaWorkflowService
                 $error = $this->validacionDetalle->errorDocente($detalle->docente_responsable_id, $reserva->licenciatura_id);
 
                 if ($error !== null) {
-                    $errores[] = "$n: ".mb_lcfirst($error);
+                    $falla($error, "detalles.$i.docente_responsable_id", $n);
                 }
             }
 
-            array_push($errores, ...$this->erroresRequerimientos($detalle, $n));
+            foreach ($this->erroresRequerimientos($detalle) as $j => $error) {
+                $falla($error, "detalles.$i.requerimientos.$j", $n);
+            }
 
             // Dos bloques de la misma reserva no pueden pisarse entre sí.
             foreach ($detalles->values()->slice($i + 1) as $j => $otro) {
                 if ($this->seTraslapan($detalle, $otro)) {
                     $errores[] = "$n y espacio ".($j + 1).': se traslapan en el mismo espacio y horario.';
+                    $campos["detalles.$j.hora_inicio"] ??= 'Se traslapa con el espacio '.($i + 1).' en el mismo espacio y horario.';
                 }
             }
         }
 
         if ($errores !== []) {
-            throw $this->errores($errores);
+            throw $this->errores($errores, $campos);
         }
     }
 
@@ -461,8 +476,8 @@ class ReservaWorkflowService
         $problemas = [];
 
         foreach ($detalles->values() as $i => $detalle) {
-            foreach ($this->erroresRequerimientos($detalle, $prefijo($detalle, $i + 1)) as $mensaje) {
-                $problemas[] = ['detalle_id' => $detalle->id, 'bloque' => $i + 1, 'mensaje' => $mensaje];
+            foreach ($this->erroresRequerimientos($detalle) as $mensaje) {
+                $problemas[] = ['detalle_id' => $detalle->id, 'bloque' => $i + 1, 'mensaje' => $prefijo($detalle, $i + 1).': '.mb_lcfirst($mensaje)];
             }
         }
 
@@ -472,27 +487,26 @@ class ReservaWorkflowService
     /**
      * Requerimientos pedidos en un bloque que el catálogo actual ya no respalda.
      *
-     * @return list<string>
+     * @return array<int, string> mensaje por posición del requerimiento en el bloque
      */
-    private function erroresRequerimientos(ReservaDetalle $detalle, string $n): array
+    private function erroresRequerimientos(ReservaDetalle $detalle): array
     {
         $pedidos = array_values($detalle->requerimientosPedidos
             ->map(fn (ReservaDetalleRequerimiento $pedido): array => ['requerimiento_id' => $pedido->requerimiento_id, 'cantidad' => $pedido->cantidad])
             ->all());
 
-        return array_values(array_map(
-            fn (string $mensaje): string => "$n: ".mb_lcfirst($mensaje),
-            $this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos),
-        ));
+        return $this->validacionDetalle->erroresRequerimientos($detalle->espacio_id, $pedidos);
     }
 
     /**
      * Un mensaje por clave (reserva.0, reserva.1, …): Inertia solo comparte el primer
-     * mensaje de cada clave y aquí interesa mostrarlos todos.
+     * mensaje de cada clave y aquí interesa mostrarlos todos. $campos agrega la misma falla
+     * bajo el campo del formulario al que corresponde.
      *
      * @param  list<string>  $mensajes
+     * @param  array<string, string>  $campos
      */
-    private function errores(array $mensajes): ValidationException
+    private function errores(array $mensajes, array $campos = []): ValidationException
     {
         $porClave = [];
 
@@ -500,7 +514,7 @@ class ReservaWorkflowService
             $porClave["reserva.$i"] = $mensaje;
         }
 
-        return ValidationException::withMessages($porClave);
+        return ValidationException::withMessages([...$porClave, ...$campos]);
     }
 
     private function seTraslapan(ReservaDetalle $a, ReservaDetalle $b): bool

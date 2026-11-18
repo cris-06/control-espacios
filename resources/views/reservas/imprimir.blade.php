@@ -55,7 +55,7 @@
             gap: 8px 16px;
             padding: 10px 16px;
             background: #fff;
-            border-bottom: 3px solid #bf0a30;
+            border-bottom: 3px solid #8b1a2b;
             font-family: system-ui, 'Segoe UI', Arial, sans-serif;
             font-size: 14px;
             line-height: 1.4;
@@ -72,20 +72,20 @@
             font: inherit;
             padding: 6px 14px;
             border-radius: 6px;
-            border: 1px solid #bf0a30;
+            border: 1px solid #8b1a2b;
             cursor: pointer;
             text-decoration: none;
         }
 
         .barra button {
-            background: #bf0a30;
+            background: #8b1a2b;
             color: #fff;
             font-weight: 600;
         }
 
         .barra a {
             background: #fff;
-            color: #bf0a30;
+            color: #8b1a2b;
         }
 
         /* ---------- Hoja ---------- */
@@ -377,6 +377,7 @@
             .hoja {
                 width: 21.59cm;
                 min-height: 0;
+                zoom: 1 !important;
                 margin: 0;
                 box-shadow: none;
                 overflow: visible;
@@ -691,6 +692,26 @@
             </tbody>
         </table>
     </div>
+
+    @unless ($vistaPrevia)
+    <script>
+        // En pantallas más angostas que la hoja carta, la hoja se reduce para verse completa
+        // sin desplazarse de lado. Solo en pantalla: al imprimir se usa el tamaño real.
+        (function () {
+            const hoja = document.querySelector('.hoja');
+            const ajustar = () => {
+                hoja.style.zoom = '';
+                const disponible = document.documentElement.clientWidth - 16;
+                const ancho = hoja.offsetWidth;
+                hoja.style.zoom = ancho > disponible ? String(disponible / ancho) : '';
+            };
+            ajustar();
+            window.addEventListener('resize', ajustar);
+            window.addEventListener('beforeprint', () => { hoja.style.zoom = ''; });
+            window.addEventListener('afterprint', ajustar);
+        })();
+    </script>
+    @endunless
 
     @if ($vistaPrevia)
     {{-- Vista previa del detalle (VER): la MISMA hoja de arriba, repartida en pantalla en hojas

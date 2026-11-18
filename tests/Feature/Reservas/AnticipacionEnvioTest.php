@@ -182,7 +182,8 @@ test('save and send keeps the draft but does not send it, nor records delivery, 
         ->post(route('reservas.store'), ($this->datos)([($this->bloque)('2026-11-19')], ['enviar' => true]));
 
     $reserva = Reserva::query()->firstOrFail();
-    $respuesta->assertRedirect(route('reservas.show', $reserva))->assertSessionHasErrors('reserva.0');
+    // Vuelve al formulario con la falla en la lista general y debajo de la fecha del bloque.
+    $respuesta->assertRedirect(route('reservas.edit', $reserva))->assertSessionHasErrors(['reserva.0', 'detalles.0.fecha']);
 
     // Comportamiento documentado: «Guardar y enviar» guarda primero el borrador y el envío
     // va en su propia transacción; si el envío se rechaza, el borrador queda guardado.

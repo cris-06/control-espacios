@@ -39,6 +39,28 @@ class ReservaRequest extends FormRequest
         $this->merge([
             'detalles' => array_values((array) $this->input('detalles', [])),
         ]);
+
+        // Grupos de cada cuatrimestre: en mayúsculas, sin espacios ni repetidos.
+        if (is_array($this->input('cuatrimestres'))) {
+            $this->merge([
+                'cuatrimestres' => array_map(fn (mixed $c): mixed => is_array($c) && is_array($c['grupos'] ?? null)
+                    ? [...$c, 'grupos' => array_values(array_unique(array_map(
+                        fn (mixed $g): mixed => is_string($g) ? mb_strtoupper(trim($g)) : $g,
+                        $c['grupos'],
+                    ), SORT_REGULAR))]
+                    : $c, array_values($this->input('cuatrimestres'))),
+            ]);
+        }
+
+        // Asignaturas libres: sin espacios sobrantes ni renglones vacíos.
+        if (is_array($this->input('asignaturas'))) {
+            $this->merge([
+                'asignaturas' => array_values(array_filter(
+                    array_map(fn (mixed $a): mixed => is_string($a) ? trim(preg_replace('/\s+/u', ' ', $a) ?? $a) : $a, $this->input('asignaturas')),
+                    fn (mixed $a): bool => $a !== '' && $a !== null,
+                )),
+            ]);
+        }
     }
 
     /**
@@ -60,15 +82,16 @@ class ReservaRequest extends FormRequest
             'nombre_actividad' => ['nullable', 'string', 'max:255'],
             'objetivo' => ['nullable', 'string', 'max:5000'],
             'tipo_formato' => ['nullable', Rule::in(['normal', 'ext'])],
-            'cuatrimestre_id' => ['nullable', 'integer', Rule::exists('cuatrimestres', 'id')],
-            'asignatura_id' => [
-                'nullable', 'integer',
-                Rule::exists('asignaturas', 'id')->where('licenciatura_id', (int) $this->input('licenciatura_id')),
-            ],
+            // Casillas de cuatrimestre (varios) y asignaturas escritas a mano (varias, opcionales).
+            'cuatrimestres' => ['nullable', 'array', 'max:20'],
+            'cuatrimestres.*' => ['array:id,grupos'],
+            'cuatrimestres.*.id' => ['required', 'integer', 'distinct', Rule::exists('cuatrimestres', 'id')],
+            'cuatrimestres.*.grupos' => ['nullable', 'array', 'max:26'],
+            'cuatrimestres.*.grupos.*' => ['string', 'regex:/^[A-Z]$/'],
+            'asignaturas' => ['nullable', 'array', 'max:10'],
+            'asignaturas.*' => ['string', 'max:150', 'distinct:ignore_case'],
             'costo_alumno' => ['nullable', 'numeric', 'min:0', 'max:99999999'],
             'promocion_redes' => ['nullable', Rule::in(['si', 'no'])],
-            'limite_min_usuarios' => ['nullable', 'integer', 'min:0'],
-            'limite_max_usuarios' => ['nullable', 'integer', 'min:0', 'gte:limite_min_usuarios'],
             // Sin reglas para folio, fecha_creacion ni fecha_entrega_formato: las asigna el servidor
             // (al crear y al primer envío) y, al no validarse, nunca llegan a safe()/datosReserva().
 
@@ -133,6 +156,16 @@ class ReservaRequest extends FormRequest
                     continue;
                 }
 
+                $alumnos = $detalle['cantidad_alumnos'] ?? null;
+
+                if (is_numeric($alumnos) && ! $errores->has("detalles.$i.espacio_id") && ! $errores->has("detalles.$i.cantidad_alumnos")) {
+                    $error = $validacion->errorAlumnos((int) $detalle['espacio_id'], (int) $alumnos);
+
+                    if ($error !== null) {
+                        $errores->add("detalles.$i.cantidad_alumnos", $error);
+                    }
+                }
+
                 $docenteId = $detalle['docente_responsable_id'] ?? null;
 
                 if (is_numeric($docenteId) && ! $errores->has('licenciatura_id') && ! $errores->has("detalles.$i.docente_responsable_id")) {
@@ -178,8 +211,14 @@ class ReservaRequest extends FormRequest
                 : 'Solo puedes registrar reservas de tus licenciaturas.',
             'actividad_id.required' => 'Selecciona el tipo de actividad.',
             'actividad_id.exists' => 'El tipo de actividad no existe o ya no está vigente.',
-            'asignatura_id.exists' => 'La asignatura no pertenece a la licenciatura seleccionada.',
-            'limite_max_usuarios.gte' => 'El máximo no puede ser menor que el mínimo.',
+            'cuatrimestres.*.array' => 'El periodo cuatrimestral no es válido.',
+            'cuatrimestres.*.id.required' => 'Selecciona el cuatrimestre.',
+            'cuatrimestres.*.id.exists' => 'Uno de los cuatrimestres no existe.',
+            'cuatrimestres.*.id.distinct' => 'Un cuatrimestre está repetido.',
+            'cuatrimestres.*.grupos.*.regex' => 'Cada grupo es una sola letra (A, B, C, …).',
+            'asignaturas.max' => 'Puedes registrar hasta 10 asignaturas.',
+            'asignaturas.*.max' => 'El nombre de la asignatura es demasiado largo (máximo 150 caracteres).',
+            'asignaturas.*.distinct' => 'La asignatura está repetida.',
             'detalles.*.espacio_id.required' => 'Selecciona el espacio.',
             'detalles.*.espacio_id.exists' => 'El espacio no existe.',
             'detalles.*.fecha.required' => 'Indica la fecha.',

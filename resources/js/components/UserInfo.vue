@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useInitials } from '@/composables/useInitials';
+import { etiquetaRol } from '@/lib/reservas';
 import type { User } from '@/types';
 
 type Props = {
@@ -14,6 +16,10 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const { getInitials } = useInitials();
+
+// Rol de quien inició sesión (este componente solo se usa en su propio menú de perfil).
+const page = usePage();
+const rol = computed(() => etiquetaRol(page.props.auth.rol?.nombre));
 
 // Compute whether we should show the avatar image
 const showAvatar = computed(
@@ -33,6 +39,9 @@ const showAvatar = computed(
         <span class="truncate font-medium">{{ user.name }}</span>
         <span v-if="showEmail" class="truncate text-xs text-muted-foreground">{{
             user.email
+        }}</span>
+        <span v-if="rol" class="truncate text-xs font-medium text-rojo">{{
+            rol
         }}</span>
     </div>
 </template>
