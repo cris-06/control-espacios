@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
+import AccionesSolicitud from '@/components/AccionesSolicitud.vue';
 import EstadoBadge from '@/components/EstadoBadge.vue';
 import TablaDatos from '@/components/TablaDatos.vue';
 import { formatearFecha } from '@/lib/reservas';
@@ -13,6 +14,8 @@ const props = defineProps<{
     mostrarDocente?: boolean;
     // Solo para reservas reales: los datos de ejemplo del panel no tienen detalle.
     enlazar?: boolean;
+    // Columna ACCIONES al final (solo el listado de solicitudes; las filas traen `acciones`).
+    conAcciones?: boolean;
 }>();
 
 const columnas = computed(() => [
@@ -26,6 +29,9 @@ const columnas = computed(() => [
     { clave: 'fecha', titulo: 'Fecha' },
     { clave: 'horario', titulo: 'Horario' },
     { clave: 'estado', titulo: 'Estado' },
+    ...(props.conAcciones
+        ? [{ clave: 'acciones', titulo: 'Acciones', fija: true }]
+        : []),
 ]);
 </script>
 
@@ -63,6 +69,14 @@ const columnas = computed(() => [
         </template>
         <template #estado="{ fila }">
             <EstadoBadge :estado-id="fila.estado_id" :estado="fila.estado" />
+        </template>
+        <template #acciones="{ fila }">
+            <AccionesSolicitud
+                v-if="fila.acciones"
+                :reserva-id="fila.reserva_id ?? fila.id"
+                :folio="fila.folio"
+                :acciones="fila.acciones"
+            />
         </template>
     </TablaDatos>
 </template>

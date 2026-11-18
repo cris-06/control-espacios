@@ -82,11 +82,17 @@ class AnticipacionReserva
      * guardado en la base: un bloque sin id (nuevo, o borrado y vuelto a crear) o con otro
      * espacio, fecha, hora de inicio u hora de fin debe cumplir la anticipación.
      *
+     * Excepción del directivo ($excepcionDirectivo): la decide SOLO ReservaService según el
+     * usuario autenticado y su permiso real (administración editando una solicitud pendiente
+     * de autorizar); nunca llega desde el navegador. Con ella, los bloques nuevos o cambiados
+     * no necesitan los 10 días, pero tampoco pueden quedar en una fecha pasada. Lo que no cambia
+     * no se revalida, así que un cambio posterior de la docente vuelve a exigir los 10 días.
+     *
      * @param  list<array<string, mixed>>  $detalles  datos validados por ReservaRequest
      *
      * @throws ValidationException con claves detalles.N.fecha
      */
-    public function validarCambios(Reserva $reserva, array $detalles): void
+    public function validarCambios(Reserva $reserva, array $detalles, bool $excepcionDirectivo = false): void
     {
         if (! $this->yaEnviada($reserva)) {
             return;
@@ -94,7 +100,10 @@ class AnticipacionReserva
 
         /** @var Collection<int, ReservaDetalle> $guardados */
         $guardados = ReservaDetalle::query()->where('reserva_id', $reserva->id)->get()->keyBy('id');
-        $minima = $this->fechaMinima()->toDateString();
+        $minima = ($excepcionDirectivo ? Date::today() : $this->fechaMinima())->toDateString();
+        $requisito = $excepcionDirectivo
+            ? 'la fecha ya pasó; elige una a partir de hoy ('.Date::today()->format('d/m/Y').').'
+            : $this->requisito();
         $errores = [];
 
         foreach ($detalles as $i => $datos) {
@@ -106,7 +115,7 @@ class AnticipacionReserva
             }
 
             if ((string) $datos['fecha'] < $minima) {
-                $errores["detalles.$i.fecha"] = ($guardado === null ? 'Espacio nuevo: ' : 'Cambiaste el espacio, la fecha o el horario: ').$this->requisito();
+                $errores["detalles.$i.fecha"] = ($guardado === null ? 'Espacio nuevo: ' : 'Cambiaste el espacio, la fecha o el horario: ').$requisito;
             }
         }
 

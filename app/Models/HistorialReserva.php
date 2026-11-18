@@ -38,6 +38,9 @@ class HistorialReserva extends Model
     /** Agregada al ENUM por 2026_11_08_000003 (el coordinador editó la reserva de un docente). */
     public const EDITADA_COORDINADOR = 'editada_coordinador';
 
+    /** Agregada al ENUM por 2026_11_12_000001 (administración editó una solicitud pendiente de autorizar). */
+    public const EDITADA_ADMIN = 'editada_admin';
+
     const CREATED_AT = 'fecha';
 
     const UPDATED_AT = null;

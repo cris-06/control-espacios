@@ -205,12 +205,12 @@ test('the minimum date follows the server clock across midnight', function () {
 
 test('the form receives the minimum date computed by the server', function () {
     $this->actingAs($this->docente)->get(route('reservas.create'))
-        ->assertInertia(fn (Assert $p) => $p->where('anticipacion', ['dias' => 10, 'fecha_minima' => '2026-11-20', 'ya_enviada' => false]));
+        ->assertInertia(fn (Assert $p) => $p->where('anticipacion', ['dias' => 10, 'fecha_minima' => '2026-11-20', 'ya_enviada' => false, 'excepcion_directivo' => false]));
 
     $reserva = ($this->enCorreccion)();
 
     $this->actingAs($this->docente)->get(route('reservas.edit', $reserva))
-        ->assertInertia(fn (Assert $p) => $p->where('anticipacion', ['dias' => 10, 'fecha_minima' => '2026-11-28', 'ya_enviada' => true]));
+        ->assertInertia(fn (Assert $p) => $p->where('anticipacion', ['dias' => 10, 'fecha_minima' => '2026-11-28', 'ya_enviada' => true, 'excepcion_directivo' => false]));
 
     expect(AnticipacionReserva::DIAS)->toBe(10);
 });

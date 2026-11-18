@@ -131,6 +131,8 @@ const form = useForm({
     limite_max_usuarios: (props.reserva?.limite_max_usuarios ?? '') as
         | number
         | '',
+    // Solo la usa el servidor en la edición del directivo (historial «editada_admin»).
+    motivo_edicion: '',
     // folio, fecha_creacion y fecha_entrega_formato no se envían: los fija el servidor.
     detalles: (props.reserva?.detalles ?? []).map((d): DetalleEditable => ({
         ...d,
@@ -289,6 +291,14 @@ const guardar = (enviar = false) => {
     }
 };
 
+// Nombre de la licenciatura actual (edición del directivo, donde se muestra sin poder cambiarla).
+const licenciaturaActual = computed(
+    () =>
+        props.opciones.licenciaturas.find(
+            (l) => String(l.id) === form.licenciatura_id,
+        )?.nombre ?? '',
+);
+
 const textarea =
     'min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
 </script>
@@ -337,7 +347,17 @@ const textarea =
                         Puedes guardar la solicitud como borrador y completarla
                         después.
                     </li>
-                    <li>
+                    <li v-if="anticipacion.excepcion_directivo">
+                        Edición del directivo: puedes cambiar fechas, horarios y
+                        espacios aunque falten menos de
+                        {{ anticipacion.dias }} días, a partir de hoy (<strong
+                            class="font-semibold text-foreground"
+                            >{{ fechaMinima }}</strong
+                        >). Al guardar se comprueban la capacidad, los
+                        requerimientos y los choques con reservas autorizadas;
+                        la solicitud sigue pendiente de tu decisión.
+                    </li>
+                    <li v-else>
                         Envíala con al menos {{ anticipacion.dias }} días
                         naturales de anticipación: hoy, la fecha más próxima
                         permitida es el
@@ -386,7 +406,23 @@ const textarea =
                         etiqueta="Licenciatura"
                         :error="form.errors.licenciatura_id"
                     >
+                        <!-- Edición del directivo: la licenciatura es de solo lectura (Laravel también
+                             rechaza cualquier cambio; ver ReservaRequest y ReservaService). -->
+                        <template v-if="anticipacion.excepcion_directivo">
+                            <p
+                                id="licenciatura_id"
+                                class="flex min-h-9 items-center rounded-md border border-input bg-muted px-3 py-1 text-sm"
+                                aria-readonly="true"
+                            >
+                                {{ licenciaturaActual }}
+                            </p>
+                            <p class="text-xs text-muted-foreground">
+                                El directivo no puede cambiar la licenciatura de
+                                la solicitud.
+                            </p>
+                        </template>
                         <CampoSelect
+                            v-else
                             id="licenciatura_id"
                             v-model="form.licenciatura_id"
                             :opciones="opciones.licenciaturas"
@@ -465,7 +501,14 @@ const textarea =
                 <p
                     class="border-b border-border px-4 py-3 text-sm text-muted-foreground md:px-6"
                 >
-                    <template v-if="anticipacion.ya_enviada">
+                    <template v-if="anticipacion.excepcion_directivo">
+                        Como directivo, los espacios nuevos o con otra fecha u
+                        horario solo deben ser a partir de hoy (<strong
+                            class="font-semibold text-foreground"
+                            >{{ fechaMinima }}</strong
+                        >); no aplica el mínimo de {{ anticipacion.dias }} días.
+                    </template>
+                    <template v-else-if="anticipacion.ya_enviada">
                         Las fechas que ya enviaste se conservan. Si agregas un
                         espacio o cambias el espacio, la fecha o el horario de
                         uno, debe ser a partir del
@@ -540,7 +583,11 @@ const textarea =
                                     class="mt-0.5 size-4 shrink-0"
                                     aria-hidden="true"
                                 />
-                                <span
+                                <span v-if="anticipacion.excepcion_directivo"
+                                    >La fecha ya pasó: elige una a partir del
+                                    {{ fechaMinima }}.</span
+                                >
+                                <span v-else
                                     >Cambia la fecha a partir del
                                     {{ fechaMinima }}: se requieren
                                     {{ anticipacion.dias }} días de anticipación
@@ -617,6 +664,29 @@ const textarea =
                             v-model.number="form.limite_max_usuarios"
                             type="number"
                             min="0"
+                        />
+                    </CampoFormulario>
+                </div>
+            </TarjetaSeccion>
+
+            <TarjetaSeccion
+                v-if="anticipacion.excepcion_directivo"
+                titulo="Motivo de la edición"
+                descripcion="Opcional. Se guarda en el historial junto con tu nombre, la fecha y el resumen de los cambios."
+            >
+                <div class="p-4 md:p-6">
+                    <CampoFormulario
+                        id="motivo_edicion"
+                        etiqueta="Motivo"
+                        :error="form.errors.motivo_edicion"
+                    >
+                        <textarea
+                            id="motivo_edicion"
+                            v-model="form.motivo_edicion"
+                            maxlength="1000"
+                            rows="3"
+                            :class="textarea"
+                            placeholder="Por ejemplo: se ajustó la fecha por disponibilidad del auditorio."
                         />
                     </CampoFormulario>
                 </div>

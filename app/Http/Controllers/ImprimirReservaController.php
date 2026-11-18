@@ -10,6 +10,7 @@ use App\Services\AnticipacionReserva;
 use App\Support\CasillasAutorizacion;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Gate;
 
@@ -25,7 +26,7 @@ class ImprimirReservaController extends Controller
 
     private const DIAS_SEMANA = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
 
-    public function __invoke(Reserva $reserva): View
+    public function __invoke(Request $request, Reserva $reserva): View
     {
         Gate::authorize('view', $reserva);
 
@@ -50,6 +51,8 @@ class ImprimirReservaController extends Controller
 
         return view('reservas.imprimir', [
             'reservaId' => $reserva->id,
+            // ?vista=previa: la MISMA plantilla, paginada en pantalla para el detalle (sin la barra).
+            'vistaPrevia' => $request->query('vista') === 'previa',
             'folio' => $reserva->folio,
             'folioInstitucional' => $reserva->folio_institucional,
             'elaboracion' => $reserva->fecha_creacion === null ? null : $this->fechaEncabezado($this->local($reserva->fecha_creacion)),
