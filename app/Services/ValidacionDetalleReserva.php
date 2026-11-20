@@ -34,14 +34,19 @@ class ValidacionDetalleReserva
     }
 
     /**
-     * Los alumnos no pueden superar la capacidad del espacio ni su máximo de alumnos.
+     * Los alumnos deben estar entre el mínimo de alumnos del espacio y el menor de su
+     * capacidad y su máximo de alumnos.
      */
     public function errorAlumnos(int $espacioId, int $cantidad): ?string
     {
-        $espacio = Espacio::query()->find($espacioId, ['id', 'nombre', 'capacidad', 'maximo_alumnos']);
+        $espacio = Espacio::query()->find($espacioId, ['id', 'nombre', 'capacidad', 'minimo_alumnos', 'maximo_alumnos']);
 
         if ($espacio === null) {
             return null;
+        }
+
+        if ($espacio->minimo_alumnos !== null && $espacio->minimo_alumnos > 0 && $cantidad < $espacio->minimo_alumnos) {
+            return "Son {$cantidad} alumnos y {$espacio->nombre} requiere como mínimo {$espacio->minimo_alumnos}.";
         }
 
         $limites = array_filter([$espacio->capacidad, $espacio->maximo_alumnos], fn (?int $l): bool => $l !== null && $l > 0);

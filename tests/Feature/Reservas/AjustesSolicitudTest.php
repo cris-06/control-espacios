@@ -165,10 +165,9 @@ test('too many students is reported under that block field when saving', functio
 });
 
 test('a failed save-and-send returns to the form with each error under its field', function () {
-    $reserva = ($this->crear)(null, ['nombre_actividad' => '']);
+    $reserva = ($this->crear)();
 
     $this->actingAs($this->docente)->put(route('reservas.update', $reserva), ($this->datos)([
-        'nombre_actividad' => '',
         'detalles' => [['espacio_id' => $this->espacio->id, 'fecha' => '2026-11-15', 'hora_inicio' => '10:00', 'hora_fin' => '12:00', 'cantidad_alumnos' => 20]],
         'enviar' => true,
     ]))
@@ -179,14 +178,69 @@ test('a failed save-and-send returns to the form with each error under its field
 });
 
 test('a coordinator sending to administration gets the strict errors under each field', function () {
-    $reserva = ($this->crear)($this->coordinador, ['nombre_actividad' => '']);
+    $reserva = ($this->crear)($this->coordinador);
+    $this->espacio->update(['estatus' => 'mantenimiento']);
 
     $this->actingAs($this->coordinador)->put(route('reservas.update', $reserva), ($this->datos)([
-        'nombre_actividad' => '',
         'enviar' => true,
     ]))
         ->assertRedirect(route('reservas.edit', $reserva))
-        ->assertSessionHasErrors(['reserva.0', 'nombre_actividad' => 'Falta el nombre de la actividad.']);
+        ->assertSessionHasErrors(['reserva.0', 'detalles.0.espacio_id' => 'El espacio no está disponible (inactivo o en mantenimiento).']);
+});
+
+// --- Formato 10: nombre, objetivo y alumnos obligatorios; mínimo y máximo del espacio ---
+
+test('name, objective and number of students are required from the first save', function () {
+    $this->actingAs($this->docente)->post(route('reservas.store'), ($this->datos)([
+        'nombre_actividad' => '   ',
+        'objetivo' => '',
+        'detalles' => [['espacio_id' => $this->espacio->id, 'fecha' => '2026-12-15', 'hora_inicio' => '10:00', 'hora_fin' => '12:00', 'cantidad_alumnos' => null]],
+    ]))->assertSessionHasErrors([
+        'nombre_actividad' => 'Escribe el nombre de la actividad.',
+        'objetivo' => 'Escribe el objetivo de la actividad.',
+        'detalles.0.cantidad_alumnos' => 'Indica la cantidad de alumnos.',
+    ]);
+
+    expect(Reserva::query()->count())->toBe(0);
+});
+
+test('fewer students than the space minimum are rejected under that field', function () {
+    $this->espacio->update(['minimo_alumnos' => 5, 'maximo_alumnos' => 30]);
+    $bloque = fn (int $alumnos): array => [['espacio_id' => $this->espacio->id, 'fecha' => '2026-12-15', 'hora_inicio' => '10:00', 'hora_fin' => '12:00', 'cantidad_alumnos' => $alumnos]];
+
+    $this->actingAs($this->docente)->post(route('reservas.store'), ($this->datos)(['detalles' => $bloque(4)]))
+        ->assertSessionHasErrors(['detalles.0.cantidad_alumnos' => "Son 4 alumnos y {$this->espacio->nombre} requiere como mínimo 5."]);
+    $this->actingAs($this->docente)->post(route('reservas.store'), ($this->datos)(['detalles' => $bloque(31)]))
+        ->assertSessionHasErrors(['detalles.0.cantidad_alumnos' => "Son 31 alumnos y {$this->espacio->nombre} admite como máximo 30."]);
+    expect(Reserva::query()->count())->toBe(0);
+
+    // Los límites exactos son válidos.
+    $this->actingAs($this->docente)->post(route('reservas.store'), ($this->datos)(['detalles' => $bloque(5)]))->assertSessionHasNoErrors();
+    $this->actingAs($this->docente)->post(route('reservas.store'), ($this->datos)(['detalles' => $bloque(30)]))->assertSessionHasNoErrors();
+});
+
+test('a teacher sending to coordination from the detail page is checked against the current limits', function () {
+    $reserva = ($this->crear)();
+    $this->espacio->update(['minimo_alumnos' => 25]);
+
+    $this->actingAs($this->docente)->post(route('reservas.transicion', $reserva), ['accion' => W::ENVIAR])
+        ->assertSessionHasErrors([
+            'reserva.0' => "Espacio 1: son 20 alumnos y {$this->espacio->nombre} requiere como mínimo 25.",
+            'detalles.0.cantidad_alumnos' => "Son 20 alumnos y {$this->espacio->nombre} requiere como mínimo 25.",
+        ]);
+
+    expect($reserva->refresh()->estado_id)->toBe(E::BORRADOR)
+        ->and($reserva->fecha_entrega_formato)->toBeNull();
+});
+
+test('the minimum is checked again when sending if the space changed after saving', function () {
+    $reserva = ($this->crear)($this->coordinador);
+    $this->espacio->update(['minimo_alumnos' => 25]);
+
+    $this->actingAs($this->coordinador)->post(route('reservas.transicion', $reserva), ['accion' => W::ENVIAR])
+        ->assertSessionHasErrors(['reserva.0', 'detalles.0.cantidad_alumnos']);
+
+    expect($reserva->refresh()->estado_id)->toBe(E::BORRADOR);
 });
 
 // --- Insignia de Solicitudes del superadmin ---

@@ -71,7 +71,7 @@ test('a draft stores the responsible teacher and the requirements of each block'
 
 test('an incomplete draft without teacher or requirements is still saved', function () {
     $this->actingAs($this->docente)
-        ->post(route('reservas.store'), ($this->solicitud)(['cantidad_alumnos' => null, 'requerimientos' => []]))
+        ->post(route('reservas.store'), ($this->solicitud)(['requerimientos' => []]))
         ->assertSessionHasNoErrors();
 
     $detalle = Reserva::firstOrFail()->detalles()->firstOrFail();

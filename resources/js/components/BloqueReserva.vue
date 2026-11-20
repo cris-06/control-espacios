@@ -164,8 +164,9 @@ const ayudaAlumnos = computed(() => {
     return partes.length ? `Espacio: ${partes.join(', ')}.` : null;
 });
 
-// Mismo límite que valida Laravel al guardar (ValidacionDetalleReserva::errorAlumnos): la
-// capacidad del espacio y su máximo de alumnos, el menor de los dos. Aquí solo se avisa antes.
+// Mismos límites que valida Laravel al guardar (ValidacionDetalleReserva::errorAlumnos): el
+// mínimo de alumnos del espacio y, como máximo, el menor de su capacidad y su máximo de
+// alumnos. Aquí solo se avisa antes de guardar.
 const errorAlumnos = computed(() => {
     const e = espacio.value;
     const cantidad = detalle.value.cantidad_alumnos;
@@ -173,7 +174,15 @@ const errorAlumnos = computed(() => {
         (l): l is number => typeof l === 'number' && l > 0,
     );
 
-    if (!e || cantidad === '' || limites.length === 0) {
+    if (!e || cantidad === '') {
+        return null;
+    }
+
+    if (e.minimo_alumnos && cantidad < e.minimo_alumnos) {
+        return `Son ${cantidad} alumnos y ${e.nombre} requiere como mínimo ${e.minimo_alumnos}.`;
+    }
+
+    if (limites.length === 0) {
         return null;
     }
 
@@ -405,7 +414,7 @@ const avisoChoque = (c: {
 
         <CampoFormulario
             :id="`alumnos-${indice}`"
-            etiqueta="Cantidad de alumnos"
+            etiqueta="Cantidad de alumnos *"
             :error="error('cantidad_alumnos') ?? errorAlumnos ?? undefined"
             class="md:col-span-2"
         >

@@ -219,6 +219,8 @@ test('the coordinator is assigned from the program when creating', function () {
     $this->actingAs($this->docenteDerecho)->post(route('reservas.store'), [
         'licenciatura_id' => $this->derecho->id,
         'actividad_id' => $this->deDerecho->actividad_id,
+        'nombre_actividad' => 'Juicio simulado',
+        'objetivo' => 'Objetivo',
         'detalles' => [],
     ])->assertSessionHasNoErrors();
 

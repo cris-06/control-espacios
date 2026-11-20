@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import { Plus, Send, TriangleAlert, X } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import AutorizacionesReserva from '@/components/AutorizacionesReserva.vue';
 import BloqueReserva from '@/components/BloqueReserva.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
@@ -145,6 +145,29 @@ const form = useForm({
 // Si se llega aquí tras un «Guardar y enviar» que falló, el servidor redirige con los errores:
 // se cargan en el formulario para mostrarlos debajo de cada campo.
 form.setError(page.props.errors as Record<string, string>);
+
+// Al cambiar un campo que tenía un error del servidor, ese error se quita: así no queda un
+// mensaje viejo y vuelve a verse el aviso en vivo (p. ej. el mínimo y máximo de alumnos).
+// El servidor vuelve a validar todo al guardar.
+watch(
+    () => form.nombre_actividad,
+    () => form.clearErrors('nombre_actividad'),
+);
+watch(
+    () => form.objetivo,
+    () => form.clearErrors('objetivo'),
+);
+watch(
+    () => form.detalles.map((d) => d.cantidad_alumnos),
+    (nuevos, anteriores) =>
+        nuevos.forEach((cantidad, i) => {
+            if (cantidad !== anteriores[i]) {
+                form.clearErrors(
+                    `detalles.${i}.cantidad_alumnos` as keyof typeof form.errors,
+                );
+            }
+        }),
+);
 
 // Periodo cuatrimestral: cuatrimestres marcados y, por cada uno, sus grupos (A, B, C, …).
 // Se ofrecen de la A a la C (o hasta el último grupo elegido) y «+ Grupo» agrega la siguiente letra.
@@ -486,7 +509,7 @@ const textarea =
                 <div class="grid gap-4 p-4 md:grid-cols-2 md:p-6">
                     <CampoFormulario
                         id="nombre_actividad"
-                        etiqueta="Nombre de la actividad"
+                        etiqueta="Nombre de la actividad *"
                         :error="form.errors.nombre_actividad"
                         class="md:col-span-2"
                     >
@@ -498,7 +521,7 @@ const textarea =
                     </CampoFormulario>
                     <CampoFormulario
                         id="objetivo"
-                        etiqueta="Objetivo"
+                        etiqueta="Objetivo *"
                         :error="form.errors.objetivo"
                         class="md:col-span-2"
                     >

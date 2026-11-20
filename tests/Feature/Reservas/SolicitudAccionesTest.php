@@ -221,7 +221,7 @@ test('teachers and coordinators are still bound by the 10-day rule', function ()
     $r = ($this->enviada)();
     $detalle = $r->detalles()->firstOrFail();
     $this->actingAs($this->coordinador)->put(route('reservas.update', $r), [
-        'licenciatura_id' => $this->lsc->id, 'actividad_id' => $this->actividad->id, 'objetivo' => 'Objetivo de prueba',
+        'licenciatura_id' => $this->lsc->id, 'actividad_id' => $this->actividad->id, 'nombre_actividad' => 'Jornada', 'objetivo' => 'Objetivo de prueba',
         'detalles' => [['id' => $detalle->id, 'espacio_id' => $this->espacio->id, 'fecha' => '2026-11-17', 'hora_inicio' => '10:00', 'hora_fin' => '12:00', 'cantidad_alumnos' => 20]],
     ])->assertSessionHasErrors('detalles.0.fecha');
     expect($detalle->refresh()->fecha->toDateString())->toBe('2026-12-15');

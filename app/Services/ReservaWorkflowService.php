@@ -126,7 +126,7 @@ class ReservaWorkflowService
             } elseif ($transicion['permiso'] === 'enviar') {
                 // El envío a coordinación admite borradores incompletos, pero no requerimientos
                 // que el catálogo ya no respalda (pudo cambiar desde que se guardaron).
-                $this->validarRequerimientos($actual);
+                $this->validarEnvioCoordinacion($actual);
             }
 
             $avisos = [];
@@ -327,8 +327,9 @@ class ReservaWorkflowService
 
             if ($detalle->cantidad_alumnos === null || $detalle->cantidad_alumnos < 1) {
                 $falla('Indica la cantidad de alumnos.', "detalles.$i.cantidad_alumnos", $n);
-            } elseif ($detalle->espacio?->capacidad !== null && $detalle->cantidad_alumnos > $detalle->espacio->capacidad) {
-                $falla("{$detalle->cantidad_alumnos} alumnos superan la capacidad de {$detalle->espacio->nombre} ({$detalle->espacio->capacidad}).", "detalles.$i.cantidad_alumnos", $n);
+            } elseif (($error = $this->validacionDetalle->errorAlumnos($detalle->espacio_id, $detalle->cantidad_alumnos)) !== null) {
+                // Mínimo y máximo del espacio, como al guardar (el espacio pudo cambiar después).
+                $falla($error, "detalles.$i.cantidad_alumnos", $n);
             }
 
             // El catálogo pudo cambiar desde que se guardó: se revalidan responsable y requerimientos.
@@ -359,21 +360,37 @@ class ReservaWorkflowService
     }
 
     /**
-     * Validación ligera del envío a coordinación: solo los requerimientos ya pedidos,
-     * contra el catálogo actual (activos, asignados al espacio y dentro de la cantidad
-     * disponible). No exige que la reserva esté completa.
+     * Validación ligera del envío a coordinación, contra el catálogo actual: los requerimientos
+     * ya pedidos (activos, asignados al espacio y dentro de la cantidad disponible) y la cantidad
+     * de alumnos de cada espacio dentro de su mínimo y máximo, por si administración cambió los
+     * límites después de guardar. No exige que la reserva esté completa.
      *
      * @throws ValidationException
      */
-    private function validarRequerimientos(Reserva $reserva): void
+    private function validarEnvioCoordinacion(Reserva $reserva): void
     {
+        $detalles = $reserva->detalles()->with(['espacio:id,nombre', 'requerimientosPedidos'])->get();
+        $mensajes = [];
+        $campos = [];
+
+        foreach ($detalles->values() as $i => $detalle) {
+            $error = $detalle->cantidad_alumnos === null
+                ? 'Indica la cantidad de alumnos.'
+                : $this->validacionDetalle->errorAlumnos($detalle->espacio_id, $detalle->cantidad_alumnos);
+
+            if ($error !== null) {
+                $mensajes[] = 'Espacio '.($i + 1).': '.mb_lcfirst($error);
+                $campos["detalles.$i.cantidad_alumnos"] = $error;
+            }
+        }
+
         $problemas = $this->problemasRequerimientos(
-            $reserva->detalles()->with('requerimientosPedidos')->get(),
+            $detalles,
             fn (ReservaDetalle $detalle, int $bloque): string => "Espacio $bloque",
         );
 
-        if ($problemas !== []) {
-            throw $this->errores(array_column($problemas, 'mensaje'));
+        if ($mensajes !== [] || $problemas !== []) {
+            throw $this->errores([...$mensajes, ...array_column($problemas, 'mensaje')], $campos);
         }
     }
 

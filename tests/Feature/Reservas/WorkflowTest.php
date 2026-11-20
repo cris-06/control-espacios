@@ -152,7 +152,7 @@ test('strict validations are required when the coordinator sends to administrati
         ->toContain('Falta el objetivo de la actividad.')
         ->toContain('Espacio 1: el espacio no está disponible (inactivo o en mantenimiento).')
         ->toContain('Espacio 1: la fecha ya pasó.')
-        ->and(collect($errores)->contains(fn ($e) => str_contains($e, 'superan la capacidad')))->toBeTrue()
+        ->and(collect($errores)->contains(fn ($e) => str_contains($e, 'admite como máximo 10')))->toBeTrue()
         ->and($reserva->refresh()->estado_id)->toBe(E::PENDIENTE_COORDINADOR);
 });
 

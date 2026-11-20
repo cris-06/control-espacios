@@ -226,6 +226,7 @@ test('the creator editing their own draft is not recorded as a coordinator edit'
         'licenciatura_id' => $this->licenciatura->id,
         'actividad_id' => Actividad::factory()->create()->id,
         'nombre_actividad' => 'Otro nombre',
+        'objetivo' => 'Objetivo',
         'detalles' => [],
     ])->assertSessionHasNoErrors();
 

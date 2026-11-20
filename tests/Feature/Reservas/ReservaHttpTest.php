@@ -67,12 +67,20 @@ test('a teacher only registers reservations for their programs', function () {
         ->assertSessionHasErrors(['licenciatura_id' => 'Solo puedes registrar reservas de tus licenciaturas.']);
 });
 
-test('a draft can be saved without details', function () {
+test('a draft can be saved without details, but not without name or objective', function () {
     $this->actingAs($this->docente)
-        ->post(route('reservas.store'), datosReserva(['detalles' => [], 'objetivo' => null]))
+        ->post(route('reservas.store'), datosReserva(['detalles' => [], 'nombre_actividad' => '', 'objetivo' => null]))
+        ->assertSessionHasErrors([
+            'nombre_actividad' => 'Escribe el nombre de la actividad.',
+            'objetivo' => 'Escribe el objetivo de la actividad.',
+        ]);
+    expect(Reserva::query()->count())->toBe(0);
+
+    $this->actingAs($this->docente)
+        ->post(route('reservas.store'), datosReserva(['detalles' => []]))
         ->assertSessionHasNoErrors();
 
-    expect(Reserva::firstOrFail()->objetivo)->toBe('');
+    expect(Reserva::firstOrFail()->detalles()->count())->toBe(0);
 });
 
 test('administration cannot create reservations', function () {

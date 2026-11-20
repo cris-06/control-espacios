@@ -13,9 +13,10 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 /**
- * Guardar una reserva (crear o editar). Es intencionalmente flexible: un docente
- * puede guardar una propuesta incompleta. Lo estricto se exige al enviar a
- * administración (ReservaWorkflowService::validarCompleta). Los permisos vienen
+ * Guardar una reserva (crear o editar). Desde el primer guardado se exigen el nombre de la
+ * actividad, el objetivo y, en cada espacio, la cantidad de alumnos dentro del mínimo y el
+ * máximo del espacio. El resto puede quedar incompleto en el borrador; lo estricto se exige al
+ * enviar a administración (ReservaWorkflowService::validarCompleta). Los permisos vienen
  * de ReservaPolicy (authorize()).
  *
  * @phpstan-import-type DatosDetalle from ReservaService
@@ -79,8 +80,8 @@ class ReservaRequest extends FormRequest
             'motivo_edicion' => ['nullable', 'string', 'max:1000'],
             // actividad_id es NOT NULL en la base: hasta un borrador necesita el tipo de actividad.
             'actividad_id' => ['required', 'integer', Rule::exists('actividades', 'id')->where('estatus', 'activa')],
-            'nombre_actividad' => ['nullable', 'string', 'max:255'],
-            'objetivo' => ['nullable', 'string', 'max:5000'],
+            'nombre_actividad' => ['required', 'string', 'max:255'],
+            'objetivo' => ['required', 'string', 'max:5000'],
             'tipo_formato' => ['nullable', Rule::in(['normal', 'ext'])],
             // Casillas de cuatrimestre (varios) y asignaturas escritas a mano (varias, opcionales).
             'cuatrimestres' => ['nullable', 'array', 'max:20'],
@@ -101,7 +102,7 @@ class ReservaRequest extends FormRequest
             'detalles.*.fecha' => ['required', 'date_format:Y-m-d'],
             'detalles.*.hora_inicio' => ['required', 'date_format:H:i'],
             'detalles.*.hora_fin' => ['required', 'date_format:H:i', 'after:detalles.*.hora_inicio'],
-            'detalles.*.cantidad_alumnos' => ['nullable', 'integer', 'min:1'],
+            'detalles.*.cantidad_alumnos' => ['required', 'integer', 'min:1'],
             'detalles.*.lugar_especifico' => ['nullable', 'string', 'max:150'],
             'detalles.*.descripcion_actividad' => ['nullable', 'string', 'max:5000'],
             'detalles.*.material_requerido' => ['nullable', 'string', 'max:5000'],
@@ -228,6 +229,10 @@ class ReservaRequest extends FormRequest
             'detalles.*.hora_fin.required' => 'Indica la hora de fin.',
             'detalles.*.hora_fin.date_format' => 'La hora de fin no es válida.',
             'detalles.*.hora_fin.after' => 'La hora de fin debe ser posterior a la de inicio.',
+            'nombre_actividad.required' => 'Escribe el nombre de la actividad.',
+            'objetivo.required' => 'Escribe el objetivo de la actividad.',
+            'detalles.*.cantidad_alumnos.required' => 'Indica la cantidad de alumnos.',
+            'detalles.*.cantidad_alumnos.integer' => 'La cantidad de alumnos debe ser un número entero.',
             'detalles.*.cantidad_alumnos.min' => 'La cantidad de alumnos debe ser al menos 1.',
             'detalles.*.docente_responsable_id.integer' => 'Selecciona un docente responsable válido.',
             'detalles.*.requerimientos.max' => 'Son demasiados requerimientos para un solo espacio.',

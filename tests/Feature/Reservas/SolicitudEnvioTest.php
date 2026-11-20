@@ -89,12 +89,14 @@ test('if sending is not possible the draft is kept and the reason is shown', fun
 
 test('if the strict checks fail when sending to administration the draft is kept with its errors', function () {
     $respuesta = $this->actingAs($this->coordinador)
-        ->post(route('reservas.store'), ($this->solicitud)(['enviar' => true, 'objetivo' => '']));
+        ->post(route('reservas.store'), ($this->solicitud)(['enviar' => true], [
+            'espacio_id' => Espacio::factory()->create(['capacidad' => 40, 'estatus' => 'mantenimiento'])->id,
+        ]));
 
     $reserva = Reserva::firstOrFail();
     // Vuelve al formulario: la falla en la lista general y debajo del campo correspondiente.
     $respuesta->assertRedirect(route('reservas.edit', $reserva))
-        ->assertSessionHasErrors(['reserva.0', 'objetivo' => 'Falta el objetivo de la actividad.']);
+        ->assertSessionHasErrors(['reserva.0', 'detalles.0.espacio_id']);
 
     expect($reserva->estado_id)->toBe(E::BORRADOR);
 });
@@ -148,7 +150,7 @@ test('editing restores every block with its teacher, space, schedule and require
         ...($this->solicitud)(),
         'detalles' => [
             ['espacio_id' => $this->espacio->id, 'fecha' => $manana, 'hora_inicio' => '08:00', 'hora_fin' => '09:30', 'cantidad_alumnos' => 15, 'docente_responsable_id' => $this->coordinador->id],
-            ['espacio_id' => $otroEspacio->id, 'fecha' => $manana, 'hora_inicio' => '10:00', 'hora_fin' => '11:00', 'docente_responsable_id' => $this->docente->id, 'requerimientos' => [['requerimiento_id' => $proyector->id, 'cantidad' => 3]]],
+            ['espacio_id' => $otroEspacio->id, 'fecha' => $manana, 'hora_inicio' => '10:00', 'hora_fin' => '11:00', 'cantidad_alumnos' => 10, 'docente_responsable_id' => $this->docente->id, 'requerimientos' => [['requerimiento_id' => $proyector->id, 'cantidad' => 3]]],
         ],
     ])->assertSessionHasNoErrors();
 
