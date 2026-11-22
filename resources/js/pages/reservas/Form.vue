@@ -13,6 +13,10 @@ import TarjetaSeccion from '@/components/TarjetaSeccion.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
+import {
+    pausarConsultasDisponibilidad,
+    reanudarConsultasDisponibilidad,
+} from '@/composables/useDisponibilidadBloque';
 import { aMinutos, folioVisible, formatearFecha } from '@/lib/reservas';
 import { show, store, update } from '@/routes/reservas';
 import { index as solicitudes } from '@/routes/solicitudes';
@@ -381,8 +385,30 @@ const resumenRequerimientos = computed(() =>
     }),
 );
 
-const guardar = (enviar = false) => {
-    const opciones = { preserveScroll: true };
+// Mientras se esperan las consultas de disponibilidad ya enviadas (antes de que form.processing
+// se active), los botones quedan deshabilitados para no guardar dos veces.
+const preparando = ref(false);
+const ocupado = computed(() => form.processing || preparando.value);
+
+const guardar = async (enviar = false) => {
+    if (ocupado.value) {
+        return;
+    }
+
+    // Sin consultas de disponibilidad durante el guardado: si una llega al servidor entre el
+    // guardado y la recarga, se lleva los errores de validación (ver useDisponibilidadBloque).
+    preparando.value = true;
+
+    try {
+        await pausarConsultasDisponibilidad();
+    } finally {
+        preparando.value = false;
+    }
+
+    const opciones = {
+        preserveScroll: true,
+        onFinish: () => reanudarConsultasDisponibilidad(),
+    };
 
     // Una asignatura escrita pero sin «Agregar» también se guarda.
     agregarAsignatura();
@@ -914,7 +940,7 @@ const textarea =
                 <Button
                     type="submit"
                     :variant="envio ? 'outline' : 'default'"
-                    :disabled="form.processing"
+                    :disabled="ocupado"
                 >
                     <Spinner v-if="form.processing && !form.enviar" />
                     {{ esEdicion ? 'Guardar cambios' : 'Guardar borrador' }}
@@ -922,7 +948,7 @@ const textarea =
                 <Button
                     v-if="envio"
                     type="button"
-                    :disabled="form.processing"
+                    :disabled="ocupado"
                     @click="guardar(true)"
                 >
                     <Spinner v-if="form.processing && form.enviar" />

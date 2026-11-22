@@ -15,6 +15,53 @@ export type EstadoConsulta =
     | { tipo: 'error'; mensaje: string }
     | { tipo: 'listo'; resultado: VerificacionDisponibilidad };
 
+/*
+ * Coordinación con el guardado del formulario.
+ *
+ * Laravel entrega los errores de validación (y los avisos) a UNA sola petición: la siguiente
+ * al guardado rechazado. Si una consulta de disponibilidad llega al servidor entre el guardado
+ * y la recarga del formulario, se lleva esos errores y el formulario vuelve sin mensajes.
+ * Abortar la consulta en el navegador no basta: si ya salió, el servidor la atiende igual.
+ *
+ * Por eso, antes de guardar, `pausarConsultasDisponibilidad()` cancela las consultas programadas,
+ * impide lanzar nuevas y ESPERA a que terminen las que ya están en el servidor; al terminar el
+ * guardado, `reanudarConsultasDisponibilidad()` vuelve a comprobar cada bloque.
+ */
+let pausadas = false;
+const enCurso = new Set<Promise<unknown>>();
+const bloques = new Set<{ pausar: () => void; reanudar: () => void }>();
+
+/** Tiempo máximo de espera por consultas ya enviadas antes de guardar de todos modos. */
+const ESPERA_MAXIMA_MS = 5000;
+
+export async function pausarConsultasDisponibilidad(): Promise<void> {
+    pausadas = true;
+    bloques.forEach((b) => b.pausar());
+
+    if (enCurso.size === 0) {
+        return;
+    }
+
+    let limite: ReturnType<typeof setTimeout> | undefined;
+
+    await Promise.race([
+        Promise.allSettled(enCurso),
+        new Promise((resolver) => {
+            limite = setTimeout(resolver, ESPERA_MAXIMA_MS);
+        }),
+    ]);
+    clearTimeout(limite);
+}
+
+export function reanudarConsultasDisponibilidad(): void {
+    if (!pausadas) {
+        return;
+    }
+
+    pausadas = false;
+    bloques.forEach((b) => b.reanudar());
+}
+
 /**
  * Consulta en vivo (GET disponibilidad/verificar) si el bloque está libre. Solo es
  * informativa: el servidor vuelve a comprobar todo al enviar y al autorizar.
@@ -26,15 +73,16 @@ export function useDisponibilidadBloque(
 ) {
     const estado = ref<EstadoConsulta>({ tipo: 'incompleto' });
     let temporizador: ReturnType<typeof setTimeout> | undefined;
-    let controlador: AbortController | undefined;
+    // Solo se muestra la respuesta de la consulta más reciente. Las anteriores no se abortan
+    // (si ya salieron, el servidor las atiende igual): terminan y su resultado se descarta,
+    // y así el guardado puede esperarlas.
+    let ultima = 0;
+    // Hubo cambios (o una consulta programada) mientras las consultas estaban en pausa.
+    let pendiente = false;
+    let desmontado = false;
 
-    const cancelar = () => {
-        clearTimeout(temporizador);
-        controlador?.abort();
-    };
-
-    const consultar = async (b: Bloque, id: number | null) => {
-        controlador = new AbortController();
+    const consultar = async (b: Bloque, id: number | null, numero: number) => {
+        const vigente = () => !desmontado && numero === ultima;
 
         try {
             const respuesta = await fetch(
@@ -52,18 +100,25 @@ export function useDisponibilidadBloque(
                         Accept: 'application/json',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
-                    signal: controlador.signal,
                 },
             );
+
+            if (!vigente()) {
+                return;
+            }
 
             if (respuesta.status === 422) {
                 const cuerpo = (await respuesta.json()) as {
                     message?: string;
                 };
-                estado.value = {
-                    tipo: 'error',
-                    mensaje: cuerpo.message ?? 'Revisa la fecha y el horario.',
-                };
+
+                if (vigente()) {
+                    estado.value = {
+                        tipo: 'error',
+                        mensaje:
+                            cuerpo.message ?? 'Revisa la fecha y el horario.',
+                    };
+                }
 
                 return;
             }
@@ -80,13 +135,14 @@ export function useDisponibilidadBloque(
                 return;
             }
 
-            estado.value = {
-                tipo: 'listo',
-                resultado:
-                    (await respuesta.json()) as VerificacionDisponibilidad,
-            };
-        } catch (e) {
-            if ((e as Error).name !== 'AbortError') {
+            const resultado =
+                (await respuesta.json()) as VerificacionDisponibilidad;
+
+            if (vigente()) {
+                estado.value = { tipo: 'listo', resultado };
+            }
+        } catch {
+            if (vigente()) {
                 estado.value = {
                     tipo: 'error',
                     mensaje: 'No se pudo consultar la disponibilidad.',
@@ -95,27 +151,77 @@ export function useDisponibilidadBloque(
         }
     };
 
-    watch(
-        () => ({ ...bloque(), id: reservaId() }),
-        ({ id, ...b }) => {
-            cancelar();
+    // Lanza la consulta (registrada en `enCurso` hasta que el servidor responde), salvo en pausa.
+    const lanzar = (b: Bloque, id: number | null, numero: number) => {
+        temporizador = undefined;
 
-            const completo =
-                b.espacio_id && b.fecha && b.hora_inicio && b.hora_fin;
+        if (pausadas) {
+            pendiente = true;
 
-            if (!completo || b.hora_fin <= b.hora_inicio) {
-                estado.value = { tipo: 'incompleto' };
+            return;
+        }
 
-                return;
+        const promesa = consultar(b, id, numero);
+        enCurso.add(promesa);
+        void promesa.finally(() => enCurso.delete(promesa));
+    };
+
+    const evaluar = () => {
+        clearTimeout(temporizador);
+        ultima++;
+
+        const { id, ...b } = { ...bloque(), id: reservaId() };
+        const completo = b.espacio_id && b.fecha && b.hora_inicio && b.hora_fin;
+
+        if (!completo || b.hora_fin <= b.hora_inicio) {
+            pendiente = false;
+            estado.value = { tipo: 'incompleto' };
+
+            return;
+        }
+
+        estado.value = { tipo: 'cargando' };
+
+        if (pausadas) {
+            pendiente = true;
+
+            return;
+        }
+
+        const numero = ultima;
+        temporizador = setTimeout(() => lanzar(b, id, numero), espera);
+    };
+
+    const control = {
+        // Cancela la consulta programada; si había una, se repite al reanudar.
+        pausar: () => {
+            if (temporizador !== undefined) {
+                clearTimeout(temporizador);
+                temporizador = undefined;
+
+                if (estado.value.tipo === 'cargando') {
+                    pendiente = true;
+                }
             }
-
-            estado.value = { tipo: 'cargando' };
-            temporizador = setTimeout(() => void consultar(b, id), espera);
         },
-        { immediate: true },
-    );
+        reanudar: () => {
+            if (pendiente && !desmontado) {
+                pendiente = false;
+                evaluar();
+            }
+        },
+    };
+    bloques.add(control);
 
-    onBeforeUnmount(cancelar);
+    watch(() => ({ ...bloque(), id: reservaId() }), evaluar, {
+        immediate: true,
+    });
+
+    onBeforeUnmount(() => {
+        desmontado = true;
+        clearTimeout(temporizador);
+        bloques.delete(control);
+    });
 
     return { estado };
 }
