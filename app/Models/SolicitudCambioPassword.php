@@ -17,6 +17,9 @@ class SolicitudCambioPassword extends Model
         'fecha_respuesta' => 'datetime',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');
