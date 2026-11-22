@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PasswordReset extends Model
 {
     protected $table = 'password_resets';
+
     public $timestamps = false;
 
     protected $fillable = ['usuario_id', 'token', 'expiracion', 'usado'];
