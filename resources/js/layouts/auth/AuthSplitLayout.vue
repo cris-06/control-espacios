@@ -10,7 +10,10 @@ defineProps<{
 </script>
 
 <template>
-    <div class="grid min-h-dvh lg:grid-cols-[5fr_6fr]">
+    <!-- minmax(0, …): las columnas pueden encogerse con la ventana sin cortar el formulario. -->
+    <div
+        class="grid min-h-dvh grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]"
+    >
         <div
             class="hidden flex-col items-center justify-center gap-6 border-r-[3px] border-primary bg-rojo p-10 text-center text-rojo-foreground lg:flex"
         >
@@ -24,8 +27,10 @@ defineProps<{
                 <p class="text-white">Centro Universitario de Valladolid</p>
             </div>
         </div>
-        <div class="flex items-center justify-center bg-background p-6 md:p-10">
-            <div class="flex w-full max-w-sm flex-col gap-6">
+        <div
+            class="flex min-w-0 items-center justify-center bg-background px-4 py-6 sm:p-6 md:p-10"
+        >
+            <div class="flex w-full max-w-sm min-w-0 flex-col gap-6">
                 <Link :href="home()" class="mx-auto lg:hidden">
                     <AppLogoIcon class="size-28 object-contain" />
                 </Link>
