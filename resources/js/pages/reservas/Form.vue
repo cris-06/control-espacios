@@ -38,6 +38,7 @@ const props = defineProps<{
     autorizaciones?: CasillaAutorizacion[];
     // Anticipación mínima calculada por el servidor (la regla se aplica en Laravel).
     anticipacion: AnticipacionEnvio;
+    espacioPreseleccionado?: number | null;
 }>();
 
 // Una reserva nueva todavía no tiene decisiones: las tres casillas quedan pendientes.
@@ -145,7 +146,20 @@ const form = useForm({
     })),
     enviar: false,
 });
-
+if (
+    props.reserva === null &&
+    props.espacioPreseleccionado != null &&
+    props.opciones.espacios.some(
+        (espacio) =>
+            espacio.id === props.espacioPreseleccionado &&
+            espacio.estatus === 'disponible',
+    )
+) {
+    form.detalles.push({
+        ...detalleVacio(),
+        espacio_id: String(props.espacioPreseleccionado),
+    });
+}
 // Si se llega aquí tras un «Guardar y enviar» que falló, el servidor redirige con los errores:
 // se cargan en el formulario para mostrarlos debajo de cada campo.
 form.setError(page.props.errors as Record<string, string>);
@@ -269,6 +283,16 @@ const erroresEnvio = computed(() =>
             ([clave]) => clave === 'transicion' || clave.startsWith('reserva.'),
         )
         .map(([, mensaje]) => mensaje),
+);
+
+// Errores de campos al guardar, mostrados también al principio del formulario.
+// Los mensajes del flujo de envío ya se muestran en erroresEnvio.
+const erroresFormulario = computed(() =>
+    Object.entries(form.errors as Record<string, string>)
+        .filter(
+            ([clave]) => clave !== 'transicion' && !clave.startsWith('reserva.'),
+        )
+        .map(([campo, mensaje]) => ({ campo, mensaje })),
 );
 
 const errorDetalle = (i: number, campo: string) =>
@@ -405,8 +429,13 @@ const guardar = async (enviar = false) => {
         preparando.value = false;
     }
 
+
     const opciones = {
         preserveScroll: true,
+        onError: (errors: Record<string, string>) => {
+            console.table(errors);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        },
         onFinish: () => reanudarConsultasDisponibilidad(),
     };
 
@@ -455,6 +484,25 @@ const textarea =
                 : 'Se guardará como borrador. Puedes enviarla ahora con «Guardar y enviar» o después desde su detalle.'
         "
     >
+        <!-- Resumen visible de los errores de validación al guardar -->
+        <div
+            v-if="erroresFormulario.length > 0"
+            role="alert"
+            class="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+            <p class="font-semibold">
+                No se pudo guardar la reserva. Revisa lo siguiente:
+            </p>
+            <ul class="mt-2 list-disc space-y-1 pl-5">
+                <li
+                    v-for="error in erroresFormulario"
+                    :key="error.campo"
+                >
+                    {{ error.mensaje }}
+                </li>
+            </ul>
+        </div>
+
         <div
             v-if="opciones.licenciaturas.length === 0"
             class="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
