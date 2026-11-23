@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SolicitudCambioPassword extends Model
 {
     protected $table = 'solicitudes_cambio_password';
+
     public $timestamps = false;
 
     protected $fillable = ['usuario_id', 'motivo', 'estado', 'respuesta_admin', 'fecha_respuesta'];
@@ -17,6 +18,9 @@ class SolicitudCambioPassword extends Model
         'fecha_respuesta' => 'datetime',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');

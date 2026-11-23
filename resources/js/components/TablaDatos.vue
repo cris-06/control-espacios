@@ -56,39 +56,51 @@ const datos = computed(() =>
 const fijas = computed(() =>
     props.columnas.slice(1).filter((columna) => columna.fija),
 );
+
+// En las tarjetas, insignias y botones no se recortan: ocupan como máximo el ancho disponible y
+// su texto puede partirse en dos líneas.
+const ajustable =
+    '[&_[data-slot=badge]]:h-auto [&_[data-slot=badge]]:max-w-full [&_[data-slot=badge]]:shrink [&_[data-slot=badge]]:text-left [&_[data-slot=badge]]:whitespace-normal [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:text-left [&_[data-slot=button]]:whitespace-normal';
 </script>
 
 <template>
     <div ref="contenedor">
         <ul v-if="angosta" class="divide-y divide-border">
+            <!-- Tarjeta por fila. Muy angosta (< 18rem): la etiqueta va encima del valor. Las
+                 insignias y botones del valor pueden partirse en dos líneas en vez de recortarse. -->
             <li
                 v-for="fila in filas"
                 :key="fila.id"
-                class="grid gap-3 px-4 py-3"
+                class="@container grid min-w-0 gap-3 px-4 py-3"
             >
-                <div v-if="titulo" class="min-w-0 font-medium">
+                <div v-if="titulo" class="min-w-0 font-medium break-words">
                     <slot :name="titulo.clave" :fila="fila">
                         {{ fila[titulo.clave as keyof T] }}
                     </slot>
                 </div>
                 <dl
                     v-if="datos.length"
-                    class="grid grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-sm"
+                    class="grid grid-cols-1 gap-x-3 gap-y-0.5 text-sm @2xs:grid-cols-[minmax(0,7rem)_minmax(0,1fr)] @2xs:gap-y-1.5"
                 >
                     <template v-for="columna in datos" :key="columna.clave">
                         <dt
-                            class="pt-0.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase"
+                            class="pt-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase first:pt-0 @2xs:pt-0.5"
                         >
                             {{ columna.titulo }}
                         </dt>
-                        <dd class="min-w-0 break-words">
+                        <dd class="min-w-0 break-words" :class="ajustable">
                             <slot :name="columna.clave" :fila="fila">
                                 {{ fila[columna.clave as keyof T] }}
                             </slot>
                         </dd>
                     </template>
                 </dl>
-                <div v-for="columna in fijas" :key="columna.clave">
+                <div
+                    v-for="columna in fijas"
+                    :key="columna.clave"
+                    class="min-w-0"
+                    :class="ajustable"
+                >
                     <slot :name="columna.clave" :fila="fila">
                         {{ fila[columna.clave as keyof T] }}
                     </slot>

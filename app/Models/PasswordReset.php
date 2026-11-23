@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class PasswordReset extends Model
 {
     protected $table = 'password_resets';
+
     public $timestamps = false;
 
     protected $fillable = ['usuario_id', 'token', 'expiracion', 'usado'];
@@ -18,6 +19,9 @@ class PasswordReset extends Model
         'created_at' => 'datetime',
     ];
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function usuario(): BelongsTo
     {
         return $this->belongsTo(User::class, 'usuario_id');
