@@ -34,13 +34,10 @@ import type { NavItem } from '@/types';
 const page = usePage();
 const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
 const puedeConsultarEspacios = computed(() =>
-    ['docente', 'coordinador'].includes(
-        page.props.auth.rol?.nombre ?? '',
-    ),
+    ['docente', 'coordinador'].includes(page.props.auth.rol?.nombre ?? ''),
 );
 
-
- // Ocultar Reportes solo ordena el menú: la ruta la protege el middleware 'rol' en el backend.
+// Ocultar Reportes solo ordena el menú: la ruta la protege el middleware 'rol' en el backend.
 const mainNavItems = computed<NavItem[]>(() => [
     {
         title: 'Panel',
@@ -110,7 +107,6 @@ const mainNavItems = computed<NavItem[]>(() => [
           ]
         : []),
 ]);
-
 
 const { open, isMobile } = useSidebar();
 

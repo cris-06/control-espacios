@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\Admin\LicenciaturaController;
 use App\Http\Controllers\Admin\UsuarioController;
+use App\Http\Controllers\CatalogoEspaciosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
 use App\Http\Controllers\EspacioController;
@@ -14,7 +15,6 @@ use App\Http\Controllers\ReservaController;
 use App\Http\Controllers\ReservaTransicionController;
 use App\Http\Controllers\SolicitudController;
 use App\Http\Controllers\VerificarDisponibilidadController;
-use App\Http\Controllers\CatalogoEspaciosController;
 use App\Http\Middleware\ConservarMensajesDeSesion;
 use Illuminate\Support\Facades\Route;
 
@@ -78,7 +78,6 @@ Route::middleware(['auth', 'verified', 'rol:admin,superadmin'])->prefix('admin')
     Route::put('licenciaturas/{licenciatura}', [LicenciaturaController::class, 'update'])->name('licenciaturas.update');
     Route::patch('licenciaturas/{licenciatura}/estatus', [LicenciaturaController::class, 'cambiarEstatus'])->name('licenciaturas.estatus');
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -161,4 +160,4 @@ Route::middleware([
     ])->name('actividades.estatus');
 });
 
-require __DIR__ . '/settings.php';
+require __DIR__.'/settings.php';

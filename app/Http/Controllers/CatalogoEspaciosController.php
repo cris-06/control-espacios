@@ -14,12 +14,11 @@ class CatalogoEspaciosController extends Controller
         $espacios = Espacio::query()
             ->where('estatus', 'disponible')
             ->with([
-                'requerimientos' => fn($consulta) =>
-                $consulta->where('estatus', 'activo'),
+                'requerimientos' => fn ($consulta) => $consulta->where('estatus', 'activo'),
             ])
             ->orderBy('nombre')
             ->get()
-            ->map(fn(Espacio $espacio): array => [
+            ->map(fn (Espacio $espacio): array => [
                 'id' => $espacio->id,
                 'nombre' => $espacio->nombre,
                 'ubicacion' => $espacio->ubicacion,
@@ -29,13 +28,18 @@ class CatalogoEspaciosController extends Controller
                 'capacidad' => $espacio->capacidad,
                 'minimo_alumnos' => $espacio->minimo_alumnos,
                 'maximo_alumnos' => $espacio->maximo_alumnos,
+
                 'requerimientos' => $espacio->requerimientos
-                    ->map(fn($requerimiento): array => [
+                    ->map(fn ($requerimiento): array => [
                         'nombre' => $requerimiento->nombre,
-                        'cantidad_disponible' =>
-                        $requerimiento->pivot->cantidad_disponible,
+                        'cantidad_disponible' => (int) data_get(
+                            $requerimiento,
+                            'pivot.cantidad_disponible',
+                            0
+                        ),
                     ])
                     ->values(),
+
             ])
             ->values();
 

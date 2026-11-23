@@ -1,4 +1,3 @@
-
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import { Building2, MapPin } from '@lucide/vue';
@@ -65,14 +64,18 @@ defineProps<{
                         {{ espacio.nombre }}
                     </h2>
 
-                    <p class="flex items-center gap-1 text-sm text-muted-foreground">
+                    <p
+                        class="flex items-center gap-1 text-sm text-muted-foreground"
+                    >
                         <MapPin class="size-4 shrink-0" />
                         {{ espacio.ubicacion || 'Sin ubicación registrada' }}
                     </p>
 
                     <p class="text-sm">
                         Capacidad:
-                        <strong>{{ espacio.capacidad ?? 'No especificada' }}</strong>
+                        <strong>{{
+                            espacio.capacidad ?? 'No especificada'
+                        }}</strong>
                     </p>
 
                     <p class="text-sm text-muted-foreground">

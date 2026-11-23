@@ -290,7 +290,8 @@ const erroresEnvio = computed(() =>
 const erroresFormulario = computed(() =>
     Object.entries(form.errors as Record<string, string>)
         .filter(
-            ([clave]) => clave !== 'transicion' && !clave.startsWith('reserva.'),
+            ([clave]) =>
+                clave !== 'transicion' && !clave.startsWith('reserva.'),
         )
         .map(([campo, mensaje]) => ({ campo, mensaje })),
 );
@@ -429,7 +430,6 @@ const guardar = async (enviar = false) => {
         preparando.value = false;
     }
 
-
     const opciones = {
         preserveScroll: true,
         onError: (errors: Record<string, string>) => {
@@ -494,10 +494,7 @@ const textarea =
                 No se pudo guardar la reserva. Revisa lo siguiente:
             </p>
             <ul class="mt-2 list-disc space-y-1 pl-5">
-                <li
-                    v-for="error in erroresFormulario"
-                    :key="error.campo"
-                >
+                <li v-for="error in erroresFormulario" :key="error.campo">
                     {{ error.mensaje }}
                 </li>
             </ul>
