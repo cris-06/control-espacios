@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActividadController;
 use App\Http\Controllers\Admin\LicenciaturaController;
 use App\Http\Controllers\Admin\UsuarioController;
+use App\Http\Controllers\CatalogoEspaciosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DisponibilidadController;
 use App\Http\Controllers\EspacioController;
@@ -54,6 +55,15 @@ Route::middleware(['auth', 'verified', 'rol:coordinador,admin,superadmin'])->gro
     // Versión imprimible con el membrete institucional (mismos filtros que el listado).
     Route::get('reportes/imprimir', [ReporteController::class, 'imprimir'])->name('reportes.imprimir');
 });
+
+Route::middleware([
+    'auth',
+    'verified',
+    'rol:coordinador,docente',
+])->get(
+    'espacios-disponibles',
+    CatalogoEspaciosController::class
+)->name('espacios.catalogo');
 
 // Solo administración. Cada acción además pasa por UserPolicy / Gate 'administrar'.
 Route::middleware(['auth', 'verified', 'rol:admin,superadmin'])->prefix('admin')->name('admin.')->group(function () {

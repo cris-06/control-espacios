@@ -33,6 +33,9 @@ import type { NavItem } from '@/types';
 
 const page = usePage();
 const esDocente = computed(() => page.props.auth.rol?.nombre === 'docente');
+const puedeConsultarEspacios = computed(() =>
+    ['docente', 'coordinador'].includes(page.props.auth.rol?.nombre ?? ''),
+);
 
 // Ocultar Reportes solo ordena el menú: la ruta la protege el middleware 'rol' en el backend.
 const mainNavItems = computed<NavItem[]>(() => [
@@ -53,8 +56,27 @@ const mainNavItems = computed<NavItem[]>(() => [
         conteo: page.props.porAtender || undefined,
     },
     ...(page.props.auth.permisos.verReportes
-        ? [{ title: 'Reportes', href: reportes(), icon: ChartColumn }]
+        ? [
+              {
+                  title: 'Reportes',
+                  href: reportes(),
+                  icon: ChartColumn,
+              },
+          ]
         : []),
+
+    // ESPACIOS PARA DOCENTES Y COORDINADORES
+    ...(puedeConsultarEspacios.value
+        ? [
+              {
+                  title: 'Espacios',
+                  href: '/espacios-disponibles',
+                  icon: Building2,
+              },
+          ]
+        : []),
+
+    // ADMINISTRACIÓN PARA DIRECTIVOS
     ...(page.props.auth.permisos.administrar
         ? [
               {

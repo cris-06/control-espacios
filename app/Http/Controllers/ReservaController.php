@@ -45,6 +45,16 @@ class ReservaController extends Controller
 
     public function create(Request $request): Response
     {
+        $espacioId = $request->integer('espacio_id');
+
+        $espacioPreseleccionado = $espacioId > 0
+            && Espacio::query()
+                ->whereKey($espacioId)
+                ->where('estatus', 'disponible')
+                ->exists()
+            ? $espacioId
+            : null;
+
         Gate::authorize('create', Reserva::class);
 
         return Inertia::render('reservas/Form', [
@@ -53,6 +63,7 @@ class ReservaController extends Controller
             // Al crear aún no se sabe el destino (depende de la licenciatura elegida).
             'envio' => 'Guardar y enviar',
             'anticipacion' => $this->anticipacion(null),
+            'espacioPreseleccionado' => $espacioPreseleccionado,
         ]);
     }
 
