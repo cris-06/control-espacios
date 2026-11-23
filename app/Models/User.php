@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Fortify\Contracts\PasskeyUser;
+use Laravel\Fortify\PasskeyAuthenticatable;
+use Laravel\Fortify\TwoFactorAuthenticatable;
 
 /**
  * Usuario autenticable, mapeado a la tabla existente `usuarios`.
@@ -30,9 +33,11 @@ use Illuminate\Notifications\Notifiable;
  */
 #[Fillable(['nombre', 'apellido_paterno', 'apellido_materno', 'correo', 'telefono', 'password', 'rol_id', 'estatus'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
-class User extends Authenticatable
+class User extends Authenticatable implements PasskeyUser
 {
-    use HasFactory, Notifiable;
+    // 2FA y llaves de acceso (Fortify): opcionales para cada usuario. Fortify solo pide el
+    // segundo factor si el modelo usa TwoFactorAuthenticatable y el usuario lo tiene activado.
+    use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
     const CREATED_AT = 'fecha_registro';
 
