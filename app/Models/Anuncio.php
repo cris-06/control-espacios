@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Anuncio extends Model
 {
     protected $table = 'anuncios';
+
     public $timestamps = false;
 
     protected $fillable = ['admin_id', 'titulo', 'contenido', 'imagen', 'estatus'];
