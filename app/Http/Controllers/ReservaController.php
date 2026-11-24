@@ -154,7 +154,8 @@ class ReservaController extends Controller
             },
             // Requerimientos que el catálogo ya no respalda: solo para quien puede actuar ahora
             // (la creadora en borrador o corrección, coordinación al revisar, administración al autorizar).
-            'advertencias' => $puedeEditar || $acciones !== []
+            // Cancelar o enviar a edición una autorizada no revalida requerimientos: no cuentan.
+            'advertencias' => $puedeEditar || $this->revalidaRequerimientos($acciones)
                 ? $this->workflow->advertenciasRequerimientos($reserva)
                 : [],
         ]);
@@ -300,9 +301,26 @@ class ReservaController extends Controller
     }
 
     /**
+     * Alguna de las acciones disponibles vuelve a validar los requerimientos (enviar, aprobar,
+     * autorizar, …). Las de gestión de una autorizada (cancelar, enviar a edición) no.
+     *
+     * @param  list<array{accion: string, etiqueta: string, destino: int, requiereObservacion: bool}>  $acciones
+     */
+    private function revalidaRequerimientos(array $acciones): bool
+    {
+        foreach ($acciones as $accion) {
+            if (! in_array($accion['accion'], [ReservaWorkflowService::CANCELAR, ReservaWorkflowService::ENVIAR_EDICION], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Observación o decisión vigente según el estado ACTUAL: la última corrección solicitada
      * si está en corrección, la autorización si está autorizada o la denegación si está
-     * denegada. En cualquier otro estado no hay ninguna vigente (una corrección ya atendida
+     * denegada (o el motivo de la cancelación si está cancelada). En cualquier otro estado no hay ninguna vigente (una corrección ya atendida
      * o un comentario de aprobación solo se ven en la línea de tiempo). Usa el historial ya
      * cargado y no escribe nada.
      *
@@ -314,6 +332,7 @@ class ReservaController extends Controller
             EstadoReserva::CORRECCION => HistorialReserva::CORRECCION_SOLICITADA,
             EstadoReserva::AUTORIZADA => HistorialReserva::AUTORIZADA,
             EstadoReserva::DENEGADA => HistorialReserva::DENEGADA,
+            EstadoReserva::CANCELADA => HistorialReserva::CANCELADA,
             default => null,
         };
 

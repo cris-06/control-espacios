@@ -129,6 +129,11 @@ const estiloObservacion: Record<
         icono: CircleX,
         clases: 'border-red-200 bg-red-50 text-red-900',
     },
+    cancelada: {
+        titulo: 'Reserva cancelada',
+        icono: Ban,
+        clases: 'border-border bg-muted text-foreground',
+    },
 };
 
 const autoriaObservacion = computed(() =>
@@ -211,6 +216,8 @@ const iconoAccion: Record<AccionFlujo['accion'], Component> = {
     autorizar: CircleCheck,
     denegar: CircleX,
     solicitar_correccion: Undo2,
+    cancelar: Ban,
+    enviar_edicion: Undo2,
 };
 
 const seleccionada = ref<AccionFlujo | null>(null);
@@ -248,9 +255,10 @@ const confirmar = () => {
 };
 
 const varianteBoton = (accion: AccionFlujo) =>
-    accion.accion === 'denegar'
+    accion.accion === 'denegar' || accion.accion === 'cancelar'
         ? 'destructive'
-        : accion.accion === 'solicitar_correccion'
+        : accion.accion === 'solicitar_correccion' ||
+            accion.accion === 'enviar_edicion'
           ? 'outline'
           : 'default';
 </script>

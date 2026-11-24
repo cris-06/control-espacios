@@ -5,9 +5,11 @@ namespace App\Policies;
 use App\Models\EstadoReserva;
 use App\Models\Licenciatura;
 use App\Models\Reserva;
+use App\Models\ReservaDetalle;
 use App\Models\Rol;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Date;
 
 /**
  * Permisos sobre reservas por rol.
@@ -141,6 +143,58 @@ class ReservaPolicy
 
         if (! $reserva->enEstado(EstadoReserva::PENDIENTE_ADMIN)) {
             return Response::deny('La reserva no está pendiente de autorización.');
+        }
+
+        return Response::allow();
+    }
+
+    /**
+     * Cancelar una reserva autorizada: autorizada -> cancelada (libera espacio y horario).
+     */
+    public function cancelar(User $user, Reserva $reserva): Response
+    {
+        return $this->gestionarAutorizada($user, $reserva, 'cancelar');
+    }
+
+    /**
+     * Reprogramar una reserva autorizada: cambia fecha, horario y, opcionalmente, el espacio
+     * de un bloque, sin cambiar de estado.
+     */
+    public function reprogramar(User $user, Reserva $reserva): Response
+    {
+        return $this->gestionarAutorizada($user, $reserva, 'reprogramar');
+    }
+
+    /**
+     * Enviar a edición una reserva autorizada: autorizada -> corrección, para que el
+     * solicitante la ajuste y la reenvíe con el flujo normal.
+     */
+    public function enviarEdicion(User $user, Reserva $reserva): Response
+    {
+        return $this->gestionarAutorizada($user, $reserva, 'enviar a edición');
+    }
+
+    /**
+     * Regla común de las acciones sobre reservas autorizadas: solo administración
+     * (admin / superadmin), solo en estado autorizada y solo mientras ninguna de sus
+     * fechas haya pasado (una reserva ya iniciada no se cancela ni se mueve).
+     */
+    private function gestionarAutorizada(User $user, Reserva $reserva, string $accion): Response
+    {
+        if (! $user->esAdministrador()) {
+            return Response::deny("Solo administración puede {$accion} reservas autorizadas.");
+        }
+
+        if (! $reserva->enEstado(EstadoReserva::AUTORIZADA)) {
+            return Response::deny("Solo se puede {$accion} una reserva autorizada.");
+        }
+
+        $primeraFecha = $reserva->relationLoaded('detalles')
+            ? $reserva->detalles->min(fn (ReservaDetalle $d): string => $d->fecha->toDateString())
+            : $reserva->detalles()->min('fecha');
+
+        if ($primeraFecha !== null && Date::parse((string) $primeraFecha)->startOfDay()->lt(Date::today())) {
+            return Response::deny("No se puede {$accion} una reserva cuya fecha ya pasó.");
         }
 
         return Response::allow();

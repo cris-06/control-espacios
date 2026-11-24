@@ -15,7 +15,8 @@ use Illuminate\Support\Collection;
  * Notificaciones (tabla `notificaciones`) que genera el flujo de reservas:
  * - Llega a coordinación      -> todos los coordinadores activos de la licenciatura.
  * - Llega a administración    -> todos los admin y superadmin activos.
- * - Corrección / autorización / denegación -> el creador.
+ * - Corrección / autorización / denegación / reprogramación -> el creador.
+ * - Cancelación de una autorizada -> el creador y los coordinadores de la licenciatura.
  * Nunca se notifica a quien hizo la acción.
  */
 class NotificacionService
@@ -70,8 +71,36 @@ class NotificacionService
                 "Tu reserva {$folio} ({$actividad}) fue denegada.{$nota}",
                 'error',
             ),
+            // Cancelación de una reserva autorizada: el creador y la coordinación de la licenciatura.
+            E::CANCELADA => $this->enviar(
+                $this->creador($reserva)->merge($this->coordinadores($reserva->licenciatura_id)),
+                $actor,
+                $reserva,
+                'Reserva cancelada',
+                "{$actor->name} canceló la reserva autorizada {$folio} ({$actividad}). El espacio y el horario quedaron libres.{$nota}",
+                'error',
+            ),
             default => null,
         };
+    }
+
+    /**
+     * Reprogramación de una reserva autorizada (no cambia de estado): avisa al creador
+     * con el horario anterior, el nuevo y el motivo.
+     */
+    public function trasReprogramacion(Reserva $reserva, User $actor, string $antes, string $despues, string $motivo): void
+    {
+        $folio = $reserva->folio ?? Reserva::folioPara($reserva->id);
+        $actividad = $reserva->nombre_actividad ?: 'sin nombre';
+
+        $this->enviar(
+            $this->creador($reserva),
+            $actor,
+            $reserva,
+            'Reserva reprogramada',
+            "{$actor->name} reprogramó tu reserva {$folio} ({$actividad}).\nAntes: {$antes}.\nAhora: {$despues}.\nMotivo: {$motivo}",
+            'warning',
+        );
     }
 
     /**

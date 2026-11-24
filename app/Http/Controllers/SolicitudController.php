@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Espacio;
 use App\Models\EstadoReserva;
 use App\Models\Licenciatura;
 use App\Models\Reserva;
+use App\Models\ReservaDetalle;
 use App\Models\User;
 use App\Services\ReservaWorkflowService;
 use App\Support\FilasReserva;
@@ -19,6 +21,15 @@ use Inertia\Response;
  */
 class SolicitudController extends Controller
 {
+    /** Acciones del listado para administración (el superadmin agrega la de coordinación). */
+    private const DE_ADMINISTRACION = [
+        ReservaWorkflowService::AUTORIZAR,
+        ReservaWorkflowService::DENEGAR,
+        ReservaWorkflowService::SOLICITAR_CORRECCION,
+        ReservaWorkflowService::CANCELAR,
+        ReservaWorkflowService::ENVIAR_EDICION,
+    ];
+
     public function __construct(
         private readonly ReservaWorkflowService $workflow,
     ) {}
@@ -59,6 +70,10 @@ class SolicitudController extends Controller
                 'acciones' => $this->acciones($reserva, $user),
             ]),
             'puedeCrear' => $user->can('create', Reserva::class),
+            // Espacios para el diálogo «Reprogramar» (solo administración).
+            'opcionesEspacios' => $user->esAdministrador()
+                ? Espacio::query()->where('estatus', 'disponible')->orderBy('nombre')->get(['id', 'nombre'])
+                : [],
         ]);
     }
 
@@ -75,15 +90,18 @@ class SolicitudController extends Controller
      * - administración: ver, autorizar, rechazar (= denegar) y mandar a corregir (= solicitar
      *   corrección); la edición no aparece en el listado.
      *
-     * @return array{ver: bool, editar: bool, transiciones: list<array{accion: string, etiqueta: string, requiereObservacion: bool}>}
+     * - administración, en una autorizada que no ha pasado: cancelar, reprogramar y enviar a
+     *   edición (ReservaPolicy::cancelar / reprogramar / enviarEdicion).
+     *
+     * @return array{ver: bool, editar: bool, transiciones: list<array{accion: string, etiqueta: string, requiereObservacion: bool}>, reprogramar: list<array{id: int, espacio_id: int, espacio: string, fecha: string, hora_inicio: string, hora_fin: string}>|null}
      */
     private function acciones(Reserva $reserva, User $user): array
     {
         $esAdmin = $user->esAdministrador();
         $permitidas = match (true) {
             // El superadmin también hace la revisión de coordinación (ver ReservaPolicy::revisar).
-            $user->esSuperadmin() => [ReservaWorkflowService::APROBAR, ReservaWorkflowService::AUTORIZAR, ReservaWorkflowService::DENEGAR, ReservaWorkflowService::SOLICITAR_CORRECCION],
-            $esAdmin => [ReservaWorkflowService::AUTORIZAR, ReservaWorkflowService::DENEGAR, ReservaWorkflowService::SOLICITAR_CORRECCION],
+            $user->esSuperadmin() => [ReservaWorkflowService::APROBAR, ...self::DE_ADMINISTRACION],
+            $esAdmin => self::DE_ADMINISTRACION,
             $user->esCoordinador() => [ReservaWorkflowService::APROBAR],
             default => [],
         };
@@ -92,6 +110,8 @@ class SolicitudController extends Controller
             ReservaWorkflowService::AUTORIZAR => 'Autorizar',
             ReservaWorkflowService::DENEGAR => 'Rechazar',
             ReservaWorkflowService::SOLICITAR_CORRECCION => 'Mandar a corregir',
+            ReservaWorkflowService::CANCELAR => 'Cancelar',
+            ReservaWorkflowService::ENVIAR_EDICION => 'Enviar a edición',
         ];
 
         $transiciones = [];
@@ -112,6 +132,17 @@ class SolicitudController extends Controller
             'ver' => $user->can('view', $reserva),
             'editar' => ! $esAdmin && $user->can('update', $reserva),
             'transiciones' => $transiciones,
+            // Bloques que administración puede reprogramar (null si no puede: ReservaPolicy::reprogramar).
+            'reprogramar' => $user->can('reprogramar', $reserva)
+                ? array_values($reserva->detalles->map(fn (ReservaDetalle $d): array => [
+                    'id' => $d->id,
+                    'espacio_id' => $d->espacio_id,
+                    'espacio' => $d->espacio->nombre,
+                    'fecha' => $d->fecha->toDateString(),
+                    'hora_inicio' => ReservaDetalle::hhmm($d->hora_inicio),
+                    'hora_fin' => ReservaDetalle::hhmm($d->hora_fin),
+                ])->all())
+                : null,
         ];
     }
 }

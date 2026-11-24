@@ -50,6 +50,13 @@ class ReservaWorkflowService
 
     public const DENEGAR = 'denegar';
 
+    public const CANCELAR = 'cancelar';
+
+    public const ENVIAR_EDICION = 'enviar_edicion';
+
+    /** No es una transición (no cambia de estado): la ejecuta reprogramar(). */
+    public const REPROGRAMAR = 'reprogramar';
+
     /**
      * Tabla de transiciones confirmada para la Fase 4. Todo lo que no esté aquí se rechaza.
      * `creador` distingue el envío de un docente (va a coordinación) del de un
@@ -71,6 +78,17 @@ class ReservaWorkflowService
         ['accion' => self::AUTORIZAR, 'de' => E::PENDIENTE_ADMIN, 'a' => E::AUTORIZADA, 'permiso' => 'autorizar', 'observacion' => true, 'estricta' => true, 'traslapes' => 'bloquear', 'detalles' => ReservaDetalle::AUTORIZADA, 'historial' => H::AUTORIZADA],
         ['accion' => self::DENEGAR, 'de' => E::PENDIENTE_ADMIN, 'a' => E::DENEGADA, 'permiso' => 'autorizar', 'observacion' => true, 'estricta' => false, 'traslapes' => null, 'detalles' => ReservaDetalle::DENEGADA, 'historial' => H::DENEGADA],
         ['accion' => self::SOLICITAR_CORRECCION, 'de' => E::PENDIENTE_ADMIN, 'a' => E::CORRECCION, 'permiso' => 'autorizar', 'observacion' => true, 'estricta' => false, 'traslapes' => null, 'detalles' => ReservaDetalle::PENDIENTE, 'historial' => H::CORRECCION_SOLICITADA],
+        // 8 y 9: gestión de administración sobre una reserva ya autorizada (ver ReservaPolicy).
+        // Cancelar libera el espacio: choques() solo cuenta reservas y bloques autorizados.
+        ['accion' => self::CANCELAR, 'de' => E::AUTORIZADA, 'a' => E::CANCELADA, 'permiso' => 'cancelar', 'observacion' => true, 'estricta' => false, 'traslapes' => null, 'detalles' => ReservaDetalle::CANCELADA, 'historial' => H::CANCELADA],
+        // Enviar a edición: el solicitante corrige y reenvía con ENVIAR (corrección -> …).
+        ['accion' => self::ENVIAR_EDICION, 'de' => E::AUTORIZADA, 'a' => E::CORRECCION, 'permiso' => 'enviarEdicion', 'observacion' => true, 'estricta' => false, 'traslapes' => null, 'detalles' => ReservaDetalle::PENDIENTE, 'historial' => H::CORRECCION_SOLICITADA],
+    ];
+
+    /** Acciones que ofrece disponibles(), en el orden en que se muestran. */
+    private const ACCIONES = [
+        self::ENVIAR, self::APROBAR, self::SOLICITAR_CORRECCION, self::AUTORIZAR, self::DENEGAR,
+        self::CANCELAR, self::ENVIAR_EDICION,
     ];
 
     private const ETIQUETAS = [
@@ -79,7 +97,20 @@ class ReservaWorkflowService
         self::SOLICITAR_CORRECCION => 'Solicitar corrección',
         self::AUTORIZAR => 'Autorizar',
         self::DENEGAR => 'Denegar',
+        self::CANCELAR => 'Cancelar',
+        self::ENVIAR_EDICION => 'Enviar a edición',
+        self::REPROGRAMAR => 'Reprogramar',
     ];
+
+    /**
+     * Acciones de transición que acepta ReservaTransicionController.
+     *
+     * @return list<string>
+     */
+    public static function acciones(): array
+    {
+        return self::ACCIONES;
+    }
 
     /**
      * Ejecuta una acción sobre la reserva.
@@ -189,7 +220,7 @@ class ReservaWorkflowService
     {
         $disponibles = [];
 
-        foreach ([self::ENVIAR, self::APROBAR, self::SOLICITAR_CORRECCION, self::AUTORIZAR, self::DENEGAR] as $accion) {
+        foreach (self::ACCIONES as $accion) {
             $transicion = $this->buscar($reserva, $accion);
 
             if ($transicion === null || ! Gate::forUser($usuario)->allows($transicion['permiso'], $reserva)) {
@@ -207,6 +238,135 @@ class ReservaWorkflowService
         }
 
         return $disponibles;
+    }
+
+    /**
+     * Reprograma un bloque de una reserva AUTORIZADA: nueva fecha, horario y, opcionalmente,
+     * espacio. El estado no cambia. Se valida el bloque (espacio disponible, alumnos dentro
+     * de los límites del espacio, requerimientos si cambió de espacio, sin pisar otro bloque
+     * de la misma reserva) y los choques con otras reservas autorizadas con el mismo criterio
+     * que AUTORIZAR (modo 'bloquear'): cualquier choque impide guardar.
+     *
+     * Orden de bloqueos igual que ejecutar(): primero la reserva y después los espacios (el
+     * actual y el nuevo, en orden de id), antes de modificar el bloque.
+     *
+     * @param  array{detalle_id: int, espacio_id: int, fecha: string, hora_inicio: string, hora_fin: string, motivo: string}  $datos
+     *
+     * @throws AuthorizationException si el usuario no tiene permiso o la reserva ya no es reprogramable
+     * @throws ValidationException si falta el motivo, el bloque no es válido o hay choques
+     */
+    public function reprogramar(Reserva $reserva, User $usuario, array $datos): void
+    {
+        $motivo = trim($datos['motivo']);
+
+        DB::transaction(function () use ($reserva, $usuario, $datos, $motivo): void {
+            $actual = Reserva::query()->whereKey($reserva->getKey())->lockForUpdate()->firstOrFail();
+
+            Gate::forUser($usuario)->authorize('reprogramar', $actual);
+
+            if ($motivo === '') {
+                throw ValidationException::withMessages(['motivo' => 'Escribe el motivo: es obligatorio para reprogramar.']);
+            }
+
+            $this->disponibilidad->bloquearEspacios([
+                ...$actual->detalles()->pluck('espacio_id')->all(),
+                $datos['espacio_id'],
+            ]);
+
+            $detalle = $actual->detalles()->with('espacio:id,nombre')->whereKey($datos['detalle_id'])->first()
+                ?? throw ValidationException::withMessages(['detalle_id' => 'El bloque no pertenece a esta reserva.']);
+
+            $antes = $this->describirBloque($detalle);
+            $espacioAnterior = $detalle->espacio_id;
+
+            $detalle->fill([
+                'espacio_id' => $datos['espacio_id'],
+                'fecha' => $datos['fecha'],
+                'hora_inicio' => $this->hora($datos['hora_inicio']),
+                'hora_fin' => $this->hora($datos['hora_fin']),
+            ]);
+
+            if (! $detalle->isDirty()) {
+                throw ValidationException::withMessages(['fecha' => 'No hay cambios: indica otra fecha, horario o espacio.']);
+            }
+
+            $detalle->save();
+            $detalle->load(['espacio', 'requerimientosPedidos']);
+
+            $this->validarBloqueReprogramado($actual, $detalle, $detalle->espacio_id !== $espacioAnterior);
+
+            $traslapes = $this->traslapes($actual, $usuario);
+
+            if ($traslapes !== []) {
+                throw $this->errores($traslapes);
+            }
+
+            $despues = $this->describirBloque($detalle);
+
+            // fecha_actualizacion: el listado ordena por ella.
+            $actual->touch();
+
+            $actual->historial()->create([
+                'usuario_id' => $usuario->id,
+                // El ENUM del historial no tiene un valor propio para la reprogramación: se registra
+                // como edición de administración, con el horario anterior y el nuevo en el comentario.
+                'accion' => H::EDITADA_ADMIN,
+                'comentario' => mb_substr("Reprogramada. Antes: {$antes}. Ahora: {$despues}. Motivo: {$motivo}", 0, 5000),
+            ]);
+
+            $this->notificaciones->trasReprogramacion($actual, $usuario, $antes, $despues, $motivo);
+
+            $reserva->setRawAttributes($actual->getAttributes(), true);
+        });
+    }
+
+    /**
+     * Validaciones del bloque reprogramado (la fecha no pasada y el horario los valida el
+     * FormRequest). Los mensajes van bajo el campo del diálogo al que corresponden.
+     *
+     * @throws ValidationException
+     */
+    private function validarBloqueReprogramado(Reserva $reserva, ReservaDetalle $detalle, bool $cambioEspacio): void
+    {
+        $errores = [];
+
+        if ($detalle->espacio === null || ! $detalle->espacio->estaDisponible()) {
+            $errores['espacio_id'] = 'El espacio no está disponible (inactivo o en mantenimiento).';
+        } elseif ($detalle->cantidad_alumnos !== null
+            && ($error = $this->validacionDetalle->errorAlumnos($detalle->espacio_id, $detalle->cantidad_alumnos)) !== null) {
+            $errores['espacio_id'] = $error;
+        } elseif ($cambioEspacio && ($requerimientos = $this->erroresRequerimientos($detalle)) !== []) {
+            // Los requerimientos pedidos pertenecen al espacio: el nuevo debe poder darlos.
+            $errores['espacio_id'] = implode(' ', $requerimientos);
+        }
+
+        foreach ($reserva->detalles()->whereKeyNot($detalle->id)->get() as $otro) {
+            if ($this->seTraslapan($detalle, $otro)) {
+                $errores['hora_inicio'] = 'Se traslapa con otro bloque de esta misma reserva.';
+            }
+        }
+
+        if ($errores !== []) {
+            throw ValidationException::withMessages($errores);
+        }
+    }
+
+    /** «Aula 1 el 15/12/2026 de 10:00 a 12:00», para historial y notificaciones. */
+    private function describirBloque(ReservaDetalle $detalle): string
+    {
+        return sprintf(
+            '%s el %s de %s a %s',
+            $detalle->espacio->nombre ?? 'Espacio',
+            $detalle->fecha->format('d/m/Y'),
+            ReservaDetalle::hhmm($detalle->hora_inicio),
+            ReservaDetalle::hhmm($detalle->hora_fin),
+        );
+    }
+
+    /** Normaliza a HH:MM:SS (la base guarda HH:MM:SS; los formularios envían HH:MM). */
+    private function hora(string $hora): string
+    {
+        return strlen($hora) === 5 ? $hora.':00' : $hora;
     }
 
     /**

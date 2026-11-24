@@ -171,6 +171,7 @@ class ImprimirReservaController extends Controller
             EstadoReserva::CORRECCION => ['EN CORRECCIÓN', 'Devuelta para corregir; debe reenviarse.'],
             EstadoReserva::PENDIENTE_ADMIN => ['PENDIENTE DE AUTORIZACIÓN', 'En espera de la decisión de administración.'],
             EstadoReserva::DENEGADA => ['SOLICITUD RECHAZADA', 'Administración denegó esta solicitud.'],
+            EstadoReserva::CANCELADA => ['RESERVA CANCELADA', 'Administración canceló esta reserva después de autorizarla.'],
             default => [mb_strtoupper(EstadoReserva::etiqueta($reserva->estado_id)), ''],
         };
 

@@ -26,6 +26,9 @@ class EstadoReserva extends Model
 
     public const DENEGADA = 6;
 
+    /** Agregado por 2026_11_23_000001: administración canceló una reserva autorizada. */
+    public const CANCELADA = 7;
+
     /** Etiquetas cortas para la interfaz (estados_reserva.descripcion es una frase). */
     public const ETIQUETAS = [
         self::BORRADOR => 'Borrador',
@@ -34,6 +37,7 @@ class EstadoReserva extends Model
         self::PENDIENTE_ADMIN => 'Pendiente de administración',
         self::AUTORIZADA => 'Autorizada',
         self::DENEGADA => 'Denegada',
+        self::CANCELADA => 'Cancelada',
     ];
 
     public static function etiqueta(int $id): string

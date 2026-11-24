@@ -17,6 +17,7 @@ class EstadoReservaSeeder extends Seeder
             ['id' => 4, 'nombre' => 'pendiente_admin',       'descripcion' => 'Aprobada por coordinador, espera admin', 'orden' => 4],
             ['id' => 5, 'nombre' => 'autorizada',            'descripcion' => 'Autorizada por el admin',              'orden' => 5],
             ['id' => 6, 'nombre' => 'denegada',              'descripcion' => 'Rechazada por admin',                  'orden' => 6],
+            ['id' => 7, 'nombre' => 'cancelada',             'descripcion' => 'Cancelada por administración después de autorizarse', 'orden' => 7],
         ];
 
         foreach ($estados as $estado) {

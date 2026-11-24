@@ -47,9 +47,15 @@ export type ReservaFila = Omit<
 };
 
 // Transición ofrecida en el listado (aprobar = «Enviar a directivo», denegar = «Rechazar»,
-// solicitar_correccion = «Mandar a corregir»).
+// solicitar_correccion = «Mandar a corregir»; cancelar y enviar_edicion, sobre autorizadas).
 export type TransicionFila = {
-    accion: 'aprobar' | 'autorizar' | 'denegar' | 'solicitar_correccion';
+    accion:
+        | 'aprobar'
+        | 'autorizar'
+        | 'denegar'
+        | 'solicitar_correccion'
+        | 'cancelar'
+        | 'enviar_edicion';
     etiqueta: string;
     requiereObservacion: boolean;
 };
@@ -58,6 +64,18 @@ export type AccionesFila = {
     ver: boolean;
     editar: boolean;
     transiciones: TransicionFila[];
+    // Bloques que administración puede reprogramar; null si no puede (reserva no autorizada o ya pasada).
+    reprogramar: BloqueReprogramable[] | null;
+};
+
+// Bloque (espacio, fecha y horario) de una reserva autorizada, para el diálogo «Reprogramar».
+export type BloqueReprogramable = {
+    id: number;
+    espacio_id: number;
+    espacio: string;
+    fecha: string;
+    hora_inicio: string;
+    hora_fin: string;
 };
 
 export type Indicador = {
@@ -216,7 +234,9 @@ export type AccionFlujo = {
         | 'aprobar'
         | 'solicitar_correccion'
         | 'autorizar'
-        | 'denegar';
+        | 'denegar'
+        | 'cancelar'
+        | 'enviar_edicion';
     etiqueta: string;
     destino: number;
     requiereObservacion: boolean;
@@ -232,7 +252,7 @@ export type AdvertenciaRequerimiento = {
 // Corrección o decisión vigente según el estado actual (autor, rol y fecha pueden faltar
 // en registros antiguos sin historial).
 export type ObservacionVigente = {
-    tipo: 'correccion_solicitada' | 'autorizada' | 'denegada';
+    tipo: 'correccion_solicitada' | 'autorizada' | 'denegada' | 'cancelada';
     comentario: string | null;
     autor: string | null;
     rol: string | null;

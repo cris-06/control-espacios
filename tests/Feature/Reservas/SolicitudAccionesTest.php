@@ -166,7 +166,8 @@ test('the director gets no decision buttons on requests that are not pending for
     $this->workflow->ejecutar($autorizada, $this->admin, W::AUTORIZAR, 'Listo');
 
     expect(($this->acciones)($this->admin, $pendienteCoord)['transiciones'])->toBe([])
-        ->and(($this->acciones)($this->admin, $autorizada->refresh())['transiciones'])->toBe([]);
+        // En una autorizada solo quedan las acciones de gestión (GestionAutorizadasTest), ninguna decisión.
+        ->and(collect(($this->acciones)($this->admin, $autorizada->refresh())['transiciones'])->pluck('accion')->all())->toBe([W::CANCELAR, W::ENVIAR_EDICION]);
 });
 
 test('the director does not see other people\'s drafts', function () {
@@ -202,7 +203,7 @@ test('hidden actions are still rejected by Laravel without changing data', funct
 test('the list rows carry no print action; printing stays available from the detail', function () {
     $r = ($this->enAdmin)();
 
-    expect(array_keys(($this->acciones)($this->coordinador, $r)))->toBe(['ver', 'editar', 'transiciones']);
+    expect(array_keys(($this->acciones)($this->coordinador, $r)))->toBe(['ver', 'editar', 'transiciones', 'reprogramar']);
 
     foreach ([$this->docente, $this->coordinador, $this->admin] as $usuario) {
         $this->actingAs($usuario)->get(route('reservas.imprimir', $r))->assertOk();

@@ -28,6 +28,8 @@ class ReservaDetalle extends Model
 
     public const DENEGADA = 'denegada';
 
+    public const CANCELADA = 'cancelada';
+
     protected $table = 'reserva_detalles';
 
     public $timestamps = false;

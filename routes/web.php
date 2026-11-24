@@ -12,6 +12,7 @@ use App\Http\Controllers\NotificacionController;
 use App\Http\Controllers\ReporteController;
 use App\Http\Controllers\RequerimientoController;
 use App\Http\Controllers\ReservaController;
+use App\Http\Controllers\ReservaReprogramacionController;
 use App\Http\Controllers\ReservaTransicionController;
 use App\Http\Controllers\SolicitudController;
 use App\Http\Controllers\VerificarDisponibilidadController;
@@ -36,6 +37,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('reservas/{reserva}/transicion', ReservaTransicionController::class)
         ->middleware('throttle:30,1')
         ->name('reservas.transicion');
+    // Reprogramar una reserva autorizada (solo administración; ReservaPolicy::reprogramar).
+    Route::patch('reservas/{reserva}/reprogramar', ReservaReprogramacionController::class)
+        ->whereNumber('reserva')
+        ->middleware('throttle:30,1')
+        ->name('reservas.reprogramar');
     // Versión imprimible del Formato 10 (solo lectura; misma política que el detalle).
     Route::get('reservas/{reserva}/imprimir', ImprimirReservaController::class)
         ->whereNumber('reserva')
