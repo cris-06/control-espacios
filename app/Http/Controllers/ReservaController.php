@@ -14,6 +14,7 @@ use App\Models\Licenciatura;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
+use App\Models\ReservaLicenciatura;
 use App\Models\Rol;
 use App\Models\User;
 use App\Services\AnticipacionReserva;
@@ -71,7 +72,7 @@ class ReservaController extends Controller
     {
         Gate::authorize('create', Reserva::class);
 
-        $reserva = $this->reservas->crear($request->user(), $request->datosReserva(), $request->datosDetalles());
+        $reserva = $this->reservas->crear($request->user(), $this->datosConCoordinador($request), $request->datosDetalles());
 
         return $this->despuesDeGuardar($request, $reserva, "Reserva {$reserva->folio} guardada como borrador.");
     }
@@ -180,7 +181,18 @@ class ReservaController extends Controller
                 ...$this->datosFormulario($reserva),
                 'folio' => $reserva->folio,
                 'folio_institucional' => $reserva->folio_institucional,
-                'detalles' => $reserva->detalles->map(fn (ReservaDetalle $detalle): array => $this->datosDetalle($detalle)),
+                // Solo los bloques capturados; las fechas generadas por la repetición se muestran
+                // como «fechas_repeticion» de su bloque (no se editan una por una).
+                'detalles' => $reserva->detalles
+                    ->filter(fn (ReservaDetalle $detalle): bool => ! $detalle->esRepeticion())
+                    ->map(fn (ReservaDetalle $detalle): array => [
+                        ...$this->datosDetalle($detalle),
+                        'fechas_repeticion' => $reserva->detalles
+                            ->filter(fn (ReservaDetalle $r): bool => $r->detalle_origen_id === $detalle->id)
+                            ->sortBy('ocurrencia')
+                            ->map(fn (ReservaDetalle $r): string => $r->fecha->toDateString())
+                            ->values()->all(),
+                    ])->values(),
             ],
             'opciones' => $this->opciones($request->user(), $reserva),
             'envio' => $this->etiquetaEnvio($reserva, $request->user()),
@@ -216,9 +228,81 @@ class ReservaController extends Controller
     {
         Gate::authorize('update', $reserva);
 
-        $this->reservas->actualizar($reserva, $request->user(), $request->datosReserva(), $request->datosDetalles(), $request->motivoEdicion());
+        try {
+            $this->reservas->actualizar($reserva, $request->user(), $this->datosConCoordinador($request), $request->datosDetalles(), $request->motivoEdicion());
+        } catch (ValidationException $e) {
+            // Edición del directivo: las comprobaciones de autorización numeran todos los bloques.
+            throw ValidationException::withMessages($this->erroresPorBloque($reserva, $e->errors()));
+        }
 
         return $this->despuesDeGuardar($request, $reserva, 'Reserva actualizada.');
+    }
+
+    /**
+     * Datos de la reserva más el coordinador responsable elegido, que ReservaService aplica
+     * aparte (no es asignable en masa).
+     *
+     * @return array<string, mixed>
+     */
+    private function datosConCoordinador(ReservaRequest $request): array
+    {
+        $datos = [...$request->datosReserva(), 'coordinador_id' => $request->coordinadorElegido()];
+        $adicionales = $request->licenciaturasAdicionales();
+
+        if ($adicionales !== null) {
+            $datos['licenciaturas_adicionales'] = $adicionales;
+        }
+
+        return $datos;
+    }
+
+    /**
+     * En una reserva que se repite, el flujo numera TODOS sus bloques (también las fechas
+     * generadas), pero el formulario solo muestra los capturados. Los errores de detalles.N se
+     * pasan al bloque capturado correspondiente, indicando la fecha si es una repetición; los
+     * mensajes «Espacio N: …» de la lista general se reescriben igual.
+     *
+     * @param  array<string, list<string>>  $errores
+     * @return array<string, list<string>>
+     */
+    private function erroresPorBloque(Reserva $reserva, array $errores): array
+    {
+        $todos = $reserva->detalles()->get(['id', 'fecha', 'hora_inicio', 'detalle_origen_id'])->values();
+
+        if ($todos->every(fn (ReservaDetalle $d): bool => $d->detalle_origen_id === null)) {
+            return $errores;
+        }
+
+        $capturados = $todos->filter(fn (ReservaDetalle $d): bool => $d->detalle_origen_id === null)->pluck('id')->values()->all();
+        // Para cada posición del flujo: [posición en el formulario, fecha si es repetición].
+        $destino = $todos->map(fn (ReservaDetalle $d): array => [
+            (int) array_search($d->detalle_origen_id ?? $d->id, $capturados, true),
+            $d->detalle_origen_id === null ? null : $d->fecha->format('d/m/Y'),
+        ])->all();
+
+        $resultado = [];
+
+        foreach ($errores as $clave => $mensajes) {
+            if (preg_match('/^detalles\.(\d+)\.(.+)$/', $clave, $m) && isset($destino[(int) $m[1]])) {
+                [$j, $fecha] = $destino[(int) $m[1]];
+                $clave = "detalles.$j.{$m[2]}";
+                $mensajes = $fecha === null ? $mensajes : array_map(fn (string $t): string => "Repetición del {$fecha}: ".mb_lcfirst($t), $mensajes);
+            } else {
+                $mensajes = array_map(fn (string $t): string => preg_replace_callback(
+                    '/^Espacio (\d+):/',
+                    function (array $e) use ($destino): string {
+                        [$j, $fecha] = $destino[(int) $e[1] - 1] ?? [(int) $e[1] - 1, null];
+
+                        return 'Espacio '.($j + 1).($fecha === null ? '' : " (repetición del {$fecha})").':';
+                    },
+                    $t,
+                ) ?? $t, $mensajes);
+            }
+
+            $resultado[$clave] = [...($resultado[$clave] ?? []), ...$mensajes];
+        }
+
+        return $resultado;
     }
 
     /**
@@ -253,7 +337,7 @@ class ReservaController extends Controller
                 if ($user->can('update', $reserva->refresh())) {
                     Inertia::flash('toast', ['type' => 'warning', 'message' => 'Se guardó la reserva, pero no se pudo enviar. Corrige los campos marcados.']);
 
-                    return to_route('reservas.edit', $reserva)->withErrors($e->errors());
+                    return to_route('reservas.edit', $reserva)->withErrors($this->erroresPorBloque($reserva, $e->errors()));
                 }
 
                 Inertia::flash('toast', ['type' => 'warning', 'message' => 'Se guardó la reserva, pero no se pudo enviar. Revisa los pendientes.']);
@@ -288,11 +372,30 @@ class ReservaController extends Controller
             'actividad_id' => $reserva->actividad_id,
             'nombre_actividad' => $reserva->nombre_actividad,
             'objetivo' => $reserva->objetivo,
-            'tipo_formato' => $reserva->tipo_formato,
             'cuatrimestres' => $reserva->cuatrimestres ?? [],
             'asignaturas' => $reserva->asignaturas ?? [],
             'costo_alumno' => $reserva->costo_alumno,
             'promocion_redes' => $reserva->promocion_redes,
+            // Formato 10: datos capturados una vez por solicitud.
+            'docente_responsable_id' => $reserva->docente_responsable_id,
+            'coordinador_id' => $reserva->coordinador_id,
+            'cantidad_total_alumnos' => $reserva->cantidad_total_alumnos,
+            'descripcion_actividad' => $reserva->descripcion_actividad,
+            'observaciones' => $reserva->observaciones,
+            // Licenciaturas participantes e invitadas (solo informativas), en el orden capturado.
+            'licenciaturas_adicionales' => $reserva->licenciaturasAdicionales()->with('licenciatura:id,nombre')->get()
+                ->map(fn (ReservaLicenciatura $l): array => [
+                    'licenciatura_id' => $l->licenciatura_id,
+                    'nombre' => $l->licenciatura->nombre,
+                    'tipo' => $l->tipo,
+                    'cuatrimestres' => $l->cuatrimestres ?? [],
+                ])->values()->all(),
+            // «Esta reserva se repite» (null si no se repite).
+            'repeticion' => $reserva->repeticion_frecuencia === null ? null : [
+                'frecuencia' => $reserva->repeticion_frecuencia,
+                'cantidad' => $reserva->repeticion_cantidad,
+                'hasta' => $reserva->repeticion_hasta?->toDateString(),
+            ],
             // Fechas automáticas (solo lectura): elaboración al crear; entrega al primer envío.
             'fecha_creacion' => $reserva->fecha_creacion?->toIso8601String(),
             'fecha_entrega_formato' => $reserva->fecha_entrega_formato?->toDateString(),
@@ -424,6 +527,10 @@ class ReservaController extends Controller
             'licenciaturas' => $licenciaturas->map(fn ($l) => ['id' => $l->id, 'nombre' => $l->nombre]),
             'actividades' => Actividad::query()->where('estatus', 'activa')->orderBy('nombre')->get(['id', 'nombre']),
             'cuatrimestres' => Cuatrimestre::query()->orderBy('numero')->get(['id', 'numero', 'nombre']),
+            // Cuántos cuatrimestres tiene cada licenciatura (la configura el superadministrador): el
+            // Formato 10 ofrece del primero a ese número para la principal, participantes e invitadas.
+            'cuatrimestres_por_licenciatura' => Licenciatura::query()->pluck('cantidad_cuatrimestres', 'id')
+                ->map(fn (mixed $n): int => (int) $n)->all(),
             'asignaturas' => Asignatura::query()
                 ->whereIn('licenciatura_id', $licenciaturas->pluck('id'))
                 ->where('estatus', 'activa')
@@ -434,7 +541,24 @@ class ReservaController extends Controller
                 'requerimientos' => $requerimientosPorEspacio[$e->id] ?? [],
             ]),
             'docentes' => $this->docentesResponsables($licenciaturaIds),
+            'coordinadores' => $this->coordinadoresResponsables($licenciaturaIds),
+            // «Invitar licenciatura»: cualquier licenciatura activa (solo como participante
+            // informativa; no concede permisos).
+            'licenciaturas_invitables' => Licenciatura::query()->where('estatus', 'activa')->orderBy('nombre')->get(['id', 'nombre'])
+                ->map(fn (Licenciatura $l): array => ['id' => $l->id, 'nombre' => $l->nombre])->values()->all(),
         ];
+    }
+
+    /**
+     * Posibles coordinadores responsables: coordinadores activos de las licenciaturas del
+     * usuario (los mismos que acepta ReservaRequest). Solo nombre.
+     *
+     * @param  list<int>  $licenciaturaIds
+     * @return list<array{id: int, nombre: string, licenciatura_ids: list<int>}>
+     */
+    private function coordinadoresResponsables(array $licenciaturaIds): array
+    {
+        return $this->docentesResponsables($licenciaturaIds, [Rol::COORDINADOR]);
     }
 
     /**
@@ -475,9 +599,10 @@ class ReservaController extends Controller
      * licenciaturas del usuario. Solo nombre (sin correo ni teléfono).
      *
      * @param  list<int>  $licenciaturaIds
+     * @param  list<string>  $roles
      * @return list<array{id: int, nombre: string, licenciatura_ids: list<int>}>
      */
-    private function docentesResponsables(array $licenciaturaIds): array
+    private function docentesResponsables(array $licenciaturaIds, array $roles = [Rol::DOCENTE, Rol::COORDINADOR]): array
     {
         if ($licenciaturaIds === []) {
             return [];
@@ -485,7 +610,7 @@ class ReservaController extends Controller
 
         return array_values(User::query()
             ->where('estatus', 'activo')
-            ->whereHas('rol', fn ($q) => $q->whereIn('nombre', [Rol::DOCENTE, Rol::COORDINADOR]))
+            ->whereHas('rol', fn ($q) => $q->whereIn('nombre', $roles))
             ->whereHas('licenciaturas', fn ($q) => $q->whereIn('licenciaturas.id', $licenciaturaIds))
             ->with(['licenciaturas' => fn ($q) => $q->whereIn('licenciaturas.id', $licenciaturaIds)->select('licenciaturas.id')])
             ->orderBy('nombre')

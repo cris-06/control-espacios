@@ -492,6 +492,19 @@
                                         <td class="t10">@if ($cuatrimestre){{ $cuatrimestre }}@else<span class="vacio">Sin registrar</span>@endif</td>
                                     </tr>
 
+                                    @if ($licenciaturasAdicionales !== [])
+                                        {{-- Solo informativas: la licenciatura principal es la de arriba (coordinación, folio y autorización). --}}
+                                        <tr>
+                                            <td class="gris etiqueta">Licenciaturas participantes:</td>
+                                            <td colspan="4" class="t10">
+                                                @foreach ($licenciaturasAdicionales as $l)
+                                                    <span class="mayusculas">{{ $l['nombre'] }}</span>@if ($l['invitada']) (invitada)@endif:
+                                                    @if ($l['grupos']){{ $l['grupos'] }}@else<span class="vacio">sin grupos registrados</span>@endif<br>
+                                                @endforeach
+                                            </td>
+                                        </tr>
+                                    @endif
+
                                     <tr>
                                         <td class="gris etiqueta">Asignatura vinculada:</td>
                                         <td class="t10">@if ($asignatura){{ $asignatura }}@else<span class="vacio">Sin asignatura vinculada</span>@endif</td>
@@ -512,6 +525,9 @@
                                             @empty
                                                 <span class="vacio" style="font-weight: normal">Sin fechas registradas</span>
                                             @endforelse
+                                            @if ($repeticion)
+                                                <span class="nota" style="font-weight: normal">{{ $repeticion }}</span>
+                                            @endif
                                         </td>
                                         <td colspan="2" class="gris etiqueta">Hora de inicio:</td>
                                         <td class="t10">{{ $horario['inicio'] ?? 'Varía por bloque' }}</td>
@@ -567,6 +583,19 @@
                                         <td class="gris etiqueta">Descripción de la Actividad:<br>(Es importante incluir procedimientos, reseña de ponentes, detalles de principio a fin del desarrollo de la actividad).</td>
                                         <td colspan="4" class="t9">
                                             @php($conDescripcion = array_filter($bloques, fn ($b) => $b['descripcion'] || $b['docente']))
+                                            @if ($docenteResponsable || $coordinadorResponsable || $descripcionGeneral)
+                                                <div class="bloque">
+                                                    @if ($docenteResponsable)
+                                                        <p><span class="negrita">Docente responsable de la actividad:</span> {{ $docenteResponsable }}</p>
+                                                    @endif
+                                                    @if ($coordinadorResponsable)
+                                                        <p><span class="negrita">Coordinador responsable:</span> {{ $coordinadorResponsable }}</p>
+                                                    @endif
+                                                    @if ($descripcionGeneral)
+                                                        <p class="parrafo justificado">{{ $descripcionGeneral }}</p>
+                                                    @endif
+                                                </div>
+                                            @endif
                                             @forelse ($conDescripcion as $b)
                                                 <div class="bloque">
                                                     @if (count($bloques) > 1)
@@ -580,7 +609,9 @@
                                                     @endif
                                                 </div>
                                             @empty
-                                                <span class="vacio">Sin descripción registrada</span>
+                                                @unless ($docenteResponsable || $coordinadorResponsable || $descripcionGeneral)
+                                                    <span class="vacio">Sin descripción registrada</span>
+                                                @endunless
                                             @endforelse
                                         </td>
                                     </tr>
@@ -643,6 +674,11 @@
                                         <td class="gris etiqueta">Observaciones, anexos, jueces, invitados etc.:</td>
                                         <td colspan="4" class="t9">
                                             @php($conObservaciones = array_filter($bloques, fn ($b) => $b['observaciones']))
+                                            @if ($observacionesGenerales)
+                                                <div class="bloque">
+                                                    <p class="parrafo">{{ $observacionesGenerales }}</p>
+                                                </div>
+                                            @endif
                                             @forelse ($conObservaciones as $b)
                                                 <div class="bloque">
                                                     @if (count($bloques) > 1)
@@ -651,7 +687,9 @@
                                                     <p class="parrafo">{{ $b['observaciones'] }}</p>
                                                 </div>
                                             @empty
-                                                <span class="vacio">Sin observaciones</span>
+                                                @unless ($observacionesGenerales)
+                                                    <span class="vacio">Sin observaciones</span>
+                                                @endunless
                                             @endforelse
                                         </td>
                                     </tr>

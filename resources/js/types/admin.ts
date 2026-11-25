@@ -52,6 +52,8 @@ export type LicenciaturaFila = {
     // Siglas oficiales para el folio institucional; null si aún no se registran.
     siglas: string | null;
     estatus: 'activa' | 'inactiva' | null;
+    // Cuántos cuatrimestres tiene (solo el superadministrador la configura).
+    cantidad_cuatrimestres: number;
     coordinadores_count?: number;
     docentes_count?: number;
 };

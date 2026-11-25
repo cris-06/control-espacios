@@ -29,11 +29,15 @@ defineOptions({
 
 const props = defineProps<{
     licenciaturas: LicenciaturaFila[];
+    // Solo el superadministrador configura la cantidad de cuatrimestres (Laravel también lo exige).
+    puedeConfigurarCuatrimestres: boolean;
+    maxCuatrimestres: number;
 }>();
 
 const columnas = [
     { clave: 'nombre', titulo: 'Licenciatura' },
     { clave: 'siglas', titulo: 'Siglas' },
+    { clave: 'cantidad_cuatrimestres', titulo: 'Cuatrimestres' },
     { clave: 'asignados', titulo: 'Asignados' },
     { clave: 'estatus', titulo: 'Estatus' },
     { clave: 'acciones', titulo: 'Acciones' },
@@ -116,6 +120,25 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                         />
                     </CampoFormulario>
                 </div>
+                <div v-if="puedeConfigurarCuatrimestres" class="w-full sm:w-48">
+                    <CampoFormulario
+                        id="cuatrimestres-nueva"
+                        etiqueta="Cantidad de cuatrimestres"
+                        :error="errors.cantidad_cuatrimestres"
+                    >
+                        <Input
+                            id="cuatrimestres-nueva"
+                            name="cantidad_cuatrimestres"
+                            type="number"
+                            inputmode="numeric"
+                            min="1"
+                            :max="maxCuatrimestres"
+                            step="1"
+                            :default-value="9"
+                            required
+                        />
+                    </CampoFormulario>
+                </div>
                 <Button type="submit" :disabled="processing">
                     <Spinner v-if="processing" />
                     Agregar
@@ -151,6 +174,11 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                     <span v-else class="text-sm text-muted-foreground italic"
                         >Sin siglas</span
                     >
+                </template>
+                <template #cantidad_cuatrimestres="{ fila }">
+                    <span class="text-sm tabular-nums">{{
+                        fila.cantidad_cuatrimestres
+                    }}</span>
                 </template>
                 <template #estatus="{ fila }">
                     <Badge
@@ -233,6 +261,39 @@ const cambiarEstatus = (licenciatura: LicenciaturaFila) => {
                     <p class="text-xs text-muted-foreground">
                         Cambiarlas solo afecta a las reservas nuevas; los folios
                         ya asignados no cambian.
+                    </p>
+                </CampoFormulario>
+                <CampoFormulario
+                    id="cuatrimestres-editar"
+                    etiqueta="Cantidad de cuatrimestres"
+                    :error="errors.cantidad_cuatrimestres"
+                >
+                    <Input
+                        v-if="puedeConfigurarCuatrimestres"
+                        id="cuatrimestres-editar"
+                        name="cantidad_cuatrimestres"
+                        type="number"
+                        inputmode="numeric"
+                        min="1"
+                        :max="maxCuatrimestres"
+                        step="1"
+                        :default-value="editando.cantidad_cuatrimestres"
+                        required
+                    />
+                    <p
+                        v-else
+                        id="cuatrimestres-editar"
+                        class="flex min-h-9 items-center rounded-md border border-input bg-muted px-3 py-1 text-sm"
+                        aria-readonly="true"
+                    >
+                        {{ editando.cantidad_cuatrimestres }}
+                    </p>
+                    <p class="text-xs text-muted-foreground">
+                        {{
+                            puedeConfigurarCuatrimestres
+                                ? `Del 1 al ${maxCuatrimestres}. No se puede reducir si un cuatrimestre mayor ya tiene grupos o reservaciones.`
+                                : 'Solo el superadministrador puede cambiarla.'
+                        }}
                     </p>
                 </CampoFormulario>
                 <DialogFooter>
