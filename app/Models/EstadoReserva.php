@@ -46,15 +46,38 @@ class EstadoReserva extends Model
     }
 
     /**
+     * @param  list<int>|null  $ids  solo estos estados (en el orden del flujo); null = todos
      * @return list<array{id: int, nombre: string}>
      */
-    public static function opciones(): array
+    public static function opciones(?array $ids = null): array
     {
+        $etiquetas = $ids === null
+            ? self::ETIQUETAS
+            : array_filter(self::ETIQUETAS, fn (int $id): bool => in_array($id, $ids, true), ARRAY_FILTER_USE_KEY);
+
         return array_map(
             fn (int $id, string $nombre): array => ['id' => $id, 'nombre' => $nombre],
-            array_keys(self::ETIQUETAS),
-            self::ETIQUETAS,
+            array_keys($etiquetas),
+            $etiquetas,
         );
+    }
+
+    /**
+     * Estados que ofrece el filtro de Solicitudes a cada rol: los de la etapa en que actúa y
+     * los resultados finales. El superadministrador los tiene todos. Solo acota el filtro: el
+     * listado sigue mostrando cada solicitud visible con su estado real.
+     *
+     * @return list<int>
+     */
+    public static function delFiltroPara(User $user): array
+    {
+        $finales = [self::AUTORIZADA, self::DENEGADA, self::CANCELADA];
+
+        return match (true) {
+            $user->esSuperadmin() => array_keys(self::ETIQUETAS),
+            $user->esAdministrador() => [self::CORRECCION, self::PENDIENTE_ADMIN, ...$finales],
+            default => [self::BORRADOR, self::PENDIENTE_COORDINADOR, self::CORRECCION, ...$finales],
+        };
     }
 
     protected $table = 'estados_reserva';

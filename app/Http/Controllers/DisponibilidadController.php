@@ -70,6 +70,8 @@ class DisponibilidadController extends Controller
                 isset($errores['fecha']) ? Date::today()->toDateString() : $filtros['fecha'],
                 isset($errores['espacio_id']) ? null : $filtros['espacio_id'],
             ),
+            // Solo para mostrar «Reservar» en la tabla del día; ReservaController vuelve a autorizar.
+            'puedeCrear' => $request->user()->can('create', Reserva::class),
         ]);
     }
 
@@ -109,7 +111,10 @@ class DisponibilidadController extends Controller
      * criterio de visibilidad que la agenda) y el primer día que se puede solicitar hoy;
      * los anteriores aparecen bloqueados.
      *
-     * @return array{mes: string, fecha_minima: string, dias_anticipacion: int, dias: array<string, array<int, array<string, mixed>>>}
+     * También la lista de espacios (con el filtro aplicado), para la tabla de horarios que se abre
+     * al elegir un día.
+     *
+     * @return array{mes: string, fecha_minima: string, dias_anticipacion: int, espacios: list<array{id: int, nombre: string, color: string, disponible: bool}>, dias: array<string, array<int, array<string, mixed>>>}
      */
     private function calendario(User $user, string $fecha, mixed $espacioId): array
     {
@@ -121,6 +126,7 @@ class DisponibilidadController extends Controller
             ->groupBy('fecha')
             ->map(fn (Collection $delDia): array => $delDia->map(fn (array $bloque): array => [
                 'id' => $bloque['id'],
+                'espacio_id' => $bloque['espacio_id'],
                 'espacio' => $bloque['espacio'],
                 'color' => $colores[$bloque['espacio_id']] ?? '#dc2626',
                 'hora_inicio' => $bloque['hora_inicio'],
@@ -133,6 +139,17 @@ class DisponibilidadController extends Controller
             'mes' => $inicio->format('Y-m'),
             'fecha_minima' => $this->anticipacion->fechaMinima()->toDateString(),
             'dias_anticipacion' => AnticipacionReserva::DIAS,
+            'espacios' => array_values(Espacio::query()
+                ->when($espacioId, fn ($q, mixed $id) => $q->whereKey((int) $id))
+                ->orderBy('nombre')
+                ->get(['id', 'nombre', 'color_calendario', 'estatus'])
+                ->map(fn (Espacio $e): array => [
+                    'id' => $e->id,
+                    'nombre' => $e->nombre,
+                    'color' => $e->color_calendario ?? '#dc2626',
+                    'disponible' => ($e->estatus ?? 'disponible') === 'disponible',
+                ])
+                ->all()),
             'dias' => $dias->all(),
         ];
     }

@@ -290,3 +290,67 @@ test('the calendar hides the details of reservations the user cannot see', funct
         ->assertInertia(fn (Assert $page) => $page
             ->where('calendario.dias.2026-12-15.0.actividad', 'Reservado'));
 });
+
+// --- Filtro de estados de Solicitudes según el rol ---
+
+test('each role is offered only its own states in the Solicitudes filter', function () {
+    $ids = fn (User $usuario): array => collect(
+        $this->actingAs($usuario)->get(route('solicitudes.index'))->assertOk()
+            ->viewData('page')['props']['opcionesEstados'],
+    )->pluck('id')->all();
+
+    $etapaDocente = [E::BORRADOR, E::PENDIENTE_COORDINADOR, E::CORRECCION, E::AUTORIZADA, E::DENEGADA, E::CANCELADA];
+
+    expect($ids($this->docente))->toBe($etapaDocente)
+        ->and($ids($this->coordinador))->toBe($etapaDocente)
+        ->and($ids($this->coordinador))->not->toContain(E::PENDIENTE_ADMIN)
+        ->and($ids($this->admin))->toBe([E::CORRECCION, E::PENDIENTE_ADMIN, E::AUTORIZADA, E::DENEGADA, E::CANCELADA])
+        ->and($ids($this->superadmin))->toBe([E::BORRADOR, E::PENDIENTE_COORDINADOR, E::CORRECCION, E::PENDIENTE_ADMIN, E::AUTORIZADA, E::DENEGADA, E::CANCELADA]);
+});
+
+test('a state outside the role is ignored as a filter, but the list still shows every visible request', function () {
+    $reserva = ($this->crear)($this->coordinador);
+    $this->workflow->ejecutar($reserva, $this->coordinador, W::ENVIAR);
+    expect($reserva->refresh()->estado_id)->toBe(E::PENDIENTE_ADMIN);
+
+    $this->actingAs($this->coordinador)->get(route('solicitudes.index', ['estado_id' => E::PENDIENTE_ADMIN]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filtros.estado_id', null)
+            ->where('solicitudes.0.id', $reserva->id)
+            ->where('solicitudes.0.estado_id', E::PENDIENTE_ADMIN));
+});
+
+// --- Tabla de horarios del día (Disponibilidad) ---
+
+test('the calendar sends each block with its space and the list of spaces for the day table', function () {
+    $reserva = ($this->crear)();
+    $this->workflow->ejecutar($reserva, $this->docente, W::ENVIAR);
+    $fuera = Espacio::factory()->create(['nombre' => 'Zona en obra', 'estatus' => 'mantenimiento']);
+
+    $this->actingAs($this->docente)->get(route('disponibilidad.index', ['fecha' => '2026-12-03']))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('puedeCrear', true)
+            ->where('calendario.dias.2026-12-15.0.espacio_id', $this->espacio->id)
+            ->where('calendario.espacios', fn ($espacios) => collect($espacios)->firstWhere('id', $this->espacio->id)['disponible'] === true
+                && collect($espacios)->firstWhere('id', $fuera->id)['disponible'] === false));
+
+    $this->actingAs($this->admin)->get(route('disponibilidad.index'))
+        ->assertInertia(fn (Assert $page) => $page->where('puedeCrear', false));
+});
+
+test('reserving from the day table opens the form with the space, date and time already chosen', function () {
+    $this->actingAs($this->docente)
+        ->get(route('reservas.create', ['espacio_id' => $this->espacio->id, 'fecha' => '2026-12-15', 'hora_inicio' => '09:00', 'hora_fin' => '10:00']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('reservas/Form')
+            ->where('espacioPreseleccionado', $this->espacio->id)
+            ->where('bloquePreseleccionado', ['fecha' => '2026-12-15', 'hora_inicio' => '09:00', 'hora_fin' => '10:00']));
+
+    // Datos inválidos en la URL no rellenan nada (y no rompen el formulario).
+    $this->actingAs($this->docente)
+        ->get(route('reservas.create', ['fecha' => '15/12/2026', 'hora_inicio' => '11:00', 'hora_fin' => '10:00']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->where('bloquePreseleccionado', null));
+});

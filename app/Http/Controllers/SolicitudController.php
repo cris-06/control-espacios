@@ -40,7 +40,10 @@ class SolicitudController extends Controller
         $user = $request->user();
         // Las licenciaturas del usuario se usan en cada comprobación de permisos por fila.
         $user->loadMissing(['rol', 'licenciaturas']);
+        // El filtro de estado solo ofrece los del rol; uno ajeno en la URL se ignora.
+        $estadosDelRol = EstadoReserva::delFiltroPara($user);
         $estadoId = $request->integer('estado_id') ?: null;
+        $estadoId = in_array($estadoId, $estadosDelRol, true) ? $estadoId : null;
         $licenciaturaId = $request->integer('licenciatura_id') ?: null;
 
         abort_if(
@@ -61,7 +64,7 @@ class SolicitudController extends Controller
 
         return Inertia::render('solicitudes/Index', [
             'filtros' => ['estado_id' => $estadoId, 'licenciatura_id' => $licenciaturaId],
-            'opcionesEstados' => EstadoReserva::opciones(),
+            'opcionesEstados' => EstadoReserva::opciones($estadosDelRol),
             'opcionesLicenciaturas' => $user->licenciaturasConsultables()
                 ->map(fn (Licenciatura $l): array => ['id' => $l->id, 'nombre' => $l->nombre])
                 ->values(),

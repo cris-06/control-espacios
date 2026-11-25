@@ -100,6 +100,7 @@ export type EspacioDisponibilidad = {
 // Vista mensual de Disponibilidad: reservas por día (AAAA-MM-DD) del mes consultado.
 export type BloqueCalendario = {
     id: number;
+    espacio_id: number;
     espacio: string;
     color: string;
     hora_inicio: string;
@@ -113,6 +114,13 @@ export type CalendarioMes = {
     // Primer día que se puede solicitar hoy; los anteriores se muestran bloqueados.
     fecha_minima: string;
     dias_anticipacion: number;
+    // Espacios de la tabla de horarios del día (con el filtro de espacio aplicado).
+    espacios: {
+        id: number;
+        nombre: string;
+        color: string;
+        disponible: boolean;
+    }[];
     dias: Record<string, BloqueCalendario[]>;
 };
 

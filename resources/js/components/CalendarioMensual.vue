@@ -199,7 +199,7 @@ const irAMes = (desplazamiento: number) =>
         >
             <span>Color sólido: autorizada.</span>
             <span>Color tenue: solicitud en revisión.</span>
-            <span>Da clic en un día para ver su agenda.</span>
+            <span>Da clic en un día para ver sus horarios y reservar.</span>
         </p>
     </div>
 </template>

@@ -13,6 +13,7 @@ import { useElementSize, useScroll } from '@vueuse/core';
 import type { Component } from 'vue';
 import { computed, nextTick, reactive, ref, useTemplateRef, watch } from 'vue';
 import CalendarioMensual from '@/components/CalendarioMensual.vue';
+import HorarioDia from '@/components/HorarioDia.vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import PaginaBase from '@/components/PaginaBase.vue';
@@ -60,6 +61,7 @@ const props = defineProps<{
     opcionesEspacios: Opcion[];
     espacios: EspacioDisponibilidad[];
     calendario: CalendarioMes;
+    puedeCrear: boolean;
 }>();
 
 const AUTORIZADA = 5;
@@ -134,6 +136,15 @@ const consultar = () => {
 const irAFecha = (fecha: string) => {
     filtros.fecha = fecha;
     consultar();
+};
+
+// Al tocar un día se abre su tabla de horarios (y la agenda de abajo pasa a ese día).
+const diaAbierto = ref<string | null>(null);
+const horarioAbierto = ref(false);
+const abrirDia = (fecha: string) => {
+    diaAbierto.value = fecha;
+    horarioAbierto.value = true;
+    irAFecha(fecha);
 };
 
 const cambiarDia = (dias: number) => {
@@ -348,10 +359,17 @@ const hayErrores = computed(() => Object.keys(props.errores).length > 0);
             <CalendarioMensual
                 :calendario="calendario"
                 :seleccionada="hayErrores ? null : props.filtros.fecha"
-                @seleccionar="irAFecha"
+                @seleccionar="abrirDia"
                 @cambiar-mes="irAFecha"
             />
         </TarjetaSeccion>
+
+        <HorarioDia
+            v-model:abierto="horarioAbierto"
+            :calendario="calendario"
+            :fecha="diaAbierto"
+            :puede-crear="puedeCrear"
+        />
 
         <template v-if="!hayErrores">
             <TarjetaSeccion titulo="Agenda del día">

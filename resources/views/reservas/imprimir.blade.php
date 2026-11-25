@@ -786,10 +786,13 @@
             position: absolute !important;
         }
 
+        /* 0.1 cm más que la tabla (17.5 cm): el borde derecho sobresale media línea del ancho de
+           la tabla y, sin este margen, el recorte del área lo ocultaba en la vista previa y en el
+           PDF que se genera desde el detalle. */
         .pagina .area {
             position: absolute;
             left: 2.045cm;
-            width: 17.5cm;
+            width: 17.6cm;
             overflow: hidden;
         }
 

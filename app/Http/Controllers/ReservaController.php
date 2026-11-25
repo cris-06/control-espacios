@@ -28,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -58,6 +59,14 @@ class ReservaController extends Controller
 
         Gate::authorize('create', Reserva::class);
 
+        // Fecha y horario elegidos en la tabla del día de Disponibilidad (solo rellenan el primer
+        // bloque; al guardar se validan como cualquier otro dato).
+        $bloque = Validator::make($request->only(['fecha', 'hora_inicio', 'hora_fin']), [
+            'fecha' => ['required', 'date_format:Y-m-d'],
+            'hora_inicio' => ['required', 'date_format:H:i'],
+            'hora_fin' => ['required', 'date_format:H:i', 'after:hora_inicio'],
+        ]);
+
         return Inertia::render('reservas/Form', [
             'reserva' => null,
             'opciones' => $this->opciones($request->user()),
@@ -65,6 +74,7 @@ class ReservaController extends Controller
             'envio' => 'Guardar y enviar',
             'anticipacion' => $this->anticipacion(null),
             'espacioPreseleccionado' => $espacioPreseleccionado,
+            'bloquePreseleccionado' => $bloque->fails() ? null : $bloque->validated(),
         ]);
     }
 

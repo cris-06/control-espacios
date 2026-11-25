@@ -51,6 +51,12 @@ const props = defineProps<{
     // Anticipación mínima calculada por el servidor (la regla se aplica en Laravel).
     anticipacion: AnticipacionEnvio;
     espacioPreseleccionado?: number | null;
+    // Fecha y horario elegidos en la tabla del día de Disponibilidad (rellenan el primer bloque).
+    bloquePreseleccionado?: {
+        fecha: string;
+        hora_inicio: string;
+        hora_fin: string;
+    } | null;
 }>();
 
 // Una reserva nueva todavía no tiene decisiones: las tres casillas quedan pendientes.
@@ -208,7 +214,11 @@ if (props.reserva === null) {
             ? String(props.espacioPreseleccionado)
             : null;
 
-    form.detalles.push({ ...detalleVacio(), espacio_id: preseleccionado });
+    form.detalles.push({
+        ...detalleVacio(),
+        ...props.bloquePreseleccionado,
+        espacio_id: preseleccionado,
+    });
 }
 // Si se llega aquí tras un «Guardar y enviar» que falló, el servidor redirige con los errores:
 // se cargan en el formulario para mostrarlos debajo de cada campo.
