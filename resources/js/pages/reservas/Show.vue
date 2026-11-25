@@ -69,9 +69,20 @@ const folio = computed(() => folioVisible(props.reserva) ?? '');
 // --- Vista previa (iframe del mismo origen; el servidor vuelve a autorizar la ruta) ---
 const previa = ref<HTMLIFrameElement | null>(null);
 const altoPrevia = ref(1100);
-const urlPrevia = imprimir.url(props.reserva.id, {
+// Tras una transición (autorizar, rechazar, mandar a corregir, …) Inertia recarga los datos de
+// la página pero no el iframe: la versión cambia con el estado y el historial, así el iframe
+// vuelve a pedir el documento y muestra lo que hay en la base de datos.
+const versionPrevia = computed(() => {
+    const ultimo = props.reserva.historial.at(-1);
+
+    return `${props.reserva.estado.id}-${props.reserva.historial.length}-${ultimo?.fecha ?? ''}`;
+});
+const urlPreviaBase = imprimir.url(props.reserva.id, {
     query: { vista: 'previa' },
 });
+const urlPrevia = computed(
+    () => `${urlPreviaBase}&v=${encodeURIComponent(versionPrevia.value)}`,
+);
 
 const recibirAltura = (evento: MessageEvent) => {
     if (

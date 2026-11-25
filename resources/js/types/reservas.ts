@@ -136,6 +136,8 @@ export type DetalleFormulario = {
     observaciones: string | null;
     docente_responsable_id: number | null;
     requerimientos: RequerimientoPedido[];
+    // Solo al editar: fechas ya generadas por la repetición a partir de este bloque.
+    fechas_repeticion?: string[];
 };
 
 // Bloque mientras se edita en el formulario. Los <select> trabajan con texto y los
@@ -200,13 +202,23 @@ export type ReservaFormulario = {
     actividad_id: number;
     nombre_actividad: string | null;
     objetivo: string;
-    tipo_formato: 'normal' | 'ext' | null;
     // Periodo cuatrimestral: cada cuatrimestre marcado con sus grupos (A, B, C, …).
     cuatrimestres: CuatrimestreGrupos[];
     // Asignaturas escritas a mano (opcionales).
     asignaturas: string[];
     costo_alumno: string | null;
     promocion_redes: 'si' | 'no' | null;
+    // Formato 10, por solicitud.
+    docente_responsable_id: number | null;
+    coordinador_id: number | null;
+    // Alumnos distintos de la actividad (no la suma de los espacios).
+    cantidad_total_alumnos: number | null;
+    descripcion_actividad: string | null;
+    observaciones: string | null;
+    // Licenciaturas participantes e invitadas (además de la principal; solo informativas).
+    licenciaturas_adicionales: LicenciaturaAdicional[];
+    // «Esta reserva se repite» (null si no se repite).
+    repeticion: Repeticion | null;
     // Fechas automáticas del servidor (solo lectura): elaboración al crear (ISO 8601)
     // y entrega al primer envío (AAAA-MM-DD, null mientras no se envíe).
     fecha_creacion: string | null;
@@ -226,6 +238,30 @@ export type OpcionesReserva = {
     })[];
     espacios: EspacioOpcion[];
     docentes: DocenteOpcion[];
+    // Coordinadores activos de las licenciaturas del usuario (coordinador responsable).
+    coordinadores: DocenteOpcion[];
+    // «Invitar licenciatura»: todas las licenciaturas activas.
+    licenciaturas_invitables: Opcion[];
+    // Cantidad de cuatrimestres configurada para cada licenciatura (por id).
+    cuatrimestres_por_licenciatura: Record<number, number>;
+};
+
+// Licenciatura que participa además de la principal (tabla reserva_licenciaturas).
+export type LicenciaturaAdicional = {
+    licenciatura_id: number;
+    nombre?: string;
+    tipo: 'participante' | 'invitada';
+    cuatrimestres: CuatrimestreGrupos[];
+};
+
+export type FrecuenciaRepeticion = 'diaria' | 'semanal' | 'mensual' | 'anual';
+
+// Repetición: cantidad = ocasiones adicionales después de la fecha original; con fecha de fin
+// (hasta), esta tiene prioridad.
+export type Repeticion = {
+    frecuencia: FrecuenciaRepeticion;
+    cantidad: number | null;
+    hasta: string | null;
 };
 
 export type AccionFlujo = {

@@ -22,6 +22,13 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $nombre_actividad
  * @property string|null $folio
  * @property string|null $folio_institucional
+ * @property int|null $docente_responsable_id responsable de la actividad completa
+ * @property int|null $cantidad_total_alumnos alumnos distintos (no la suma de los espacios)
+ * @property string|null $descripcion_actividad descripción general de la actividad
+ * @property string|null $observaciones observaciones, anexos, jueces, invitados
+ * @property string|null $repeticion_frecuencia diaria, semanal, mensual o anual; null si no se repite
+ * @property int|null $repeticion_cantidad repeticiones después de la fecha original
+ * @property CarbonInterface|null $repeticion_hasta fecha final (tiene prioridad sobre la cantidad)
  * @property string $objetivo
  * @property int|null $cuatrimestre_id anterior a la selección múltiple; el formulario usa $cuatrimestres
  * @property list<array{id: int, grupos: list<string>}>|null $cuatrimestres cuatrimestres marcados y sus grupos
@@ -51,10 +58,16 @@ class Reserva extends Model
 
     // folio, folio_institucional, fecha_creacion y fecha_entrega_formato no son asignables: las fija el servidor
     // (ReservaService::crear y el primer envío en ReservaWorkflowService::ejecutar).
+    // coordinador_id tampoco: lo fija ReservaService (elegido entre los coordinadores de la
+    // licenciatura) y lo confirma ReservaWorkflowService::asignarCoordinador.
     protected $fillable = [
         'actividad_id', 'licenciatura_id', 'tipo_formato', 'nombre_actividad', 'objetivo',
         'cuatrimestre_id', 'cuatrimestres', 'asignatura_id', 'asignaturas', 'costo_alumno', 'promocion_redes',
         'limite_min_usuarios', 'limite_max_usuarios',
+        // Formato 10 (2026_11_24_000001): datos capturados por solicitud.
+        'docente_responsable_id', 'cantidad_total_alumnos', 'descripcion_actividad', 'observaciones',
+        // Repetición (2026_11_24_000002); las fechas las genera RecurrenciaReserva.
+        'repeticion_frecuencia', 'repeticion_cantidad', 'repeticion_hasta',
     ];
 
     protected $attributes = [
@@ -77,8 +90,34 @@ class Reserva extends Model
             'costo_alumno' => 'decimal:2',
             'limite_min_usuarios' => 'integer',
             'limite_max_usuarios' => 'integer',
+            'docente_responsable_id' => 'integer',
+            'cantidad_total_alumnos' => 'integer',
+            'repeticion_cantidad' => 'integer',
+            'repeticion_hasta' => 'date:Y-m-d',
             'fecha_entrega_formato' => 'date:Y-m-d',
         ];
+    }
+
+    /**
+     * Licenciaturas participantes e invitadas (además de la principal), en el orden capturado.
+     * Solo informativas: no conceden permisos.
+     *
+     * @return HasMany<ReservaLicenciatura, $this>
+     */
+    public function licenciaturasAdicionales(): HasMany
+    {
+        return $this->hasMany(ReservaLicenciatura::class, 'reserva_id')->orderBy('orden')->orderBy('id');
+    }
+
+    /**
+     * Docente o coordinador responsable de la actividad completa (Formato 10). El responsable
+     * de cada espacio está en ReservaDetalle::docenteResponsable.
+     *
+     * @return BelongsTo<User, $this>
+     */
+    public function docenteResponsable(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'docente_responsable_id');
     }
 
     /**
@@ -145,11 +184,23 @@ class Reserva extends Model
      */
     public function periodoCuatrimestral(): array
     {
-        if (empty($this->cuatrimestres)) {
+        return self::periodoDe($this->cuatrimestres);
+    }
+
+    /**
+     * Mismo formato para cualquier lista de cuatrimestres con grupos (p. ej. la de una
+     * licenciatura participante).
+     *
+     * @param  list<array{id: int, grupos: list<string>}>|null  $cuatrimestres
+     * @return list<string>
+     */
+    public static function periodoDe(?array $cuatrimestres): array
+    {
+        if (empty($cuatrimestres)) {
             return [];
         }
 
-        $grupos = collect($this->cuatrimestres)->mapWithKeys(fn (array $c): array => [(int) $c['id'] => $c['grupos']]);
+        $grupos = collect($cuatrimestres)->mapWithKeys(fn (array $c): array => [(int) $c['id'] => $c['grupos']]);
 
         return array_values(Cuatrimestre::query()
             ->whereKey($grupos->keys()->all())

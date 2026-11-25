@@ -19,6 +19,8 @@ use Illuminate\Support\Carbon;
  * @property string $hora_fin HH:MM:SS
  * @property int|null $cantidad_alumnos
  * @property string|null $estado_detalle pendiente | autorizada | denegada | cancelada
+ * @property int|null $detalle_origen_id bloque original del que es repetición (null si es original)
+ * @property int|null $ocurrencia 0 = original de una reserva que se repite, 1… = repetición; null si no se repite
  */
 class ReservaDetalle extends Model
 {
@@ -47,7 +49,28 @@ class ReservaDetalle extends Model
             'espacio_id' => 'integer',
             'cantidad_alumnos' => 'integer',
             'docente_responsable_id' => 'integer',
+            // Los fija ReservaService al generar las repeticiones (no son asignables en masa).
+            'detalle_origen_id' => 'integer',
+            'ocurrencia' => 'integer',
         ];
+    }
+
+    /**
+     * ¿Es una fecha generada por la repetición (no un bloque capturado en el formulario)?
+     */
+    public function esRepeticion(): bool
+    {
+        return $this->detalle_origen_id !== null;
+    }
+
+    /**
+     * Fechas generadas a partir de este bloque cuando la reserva se repite.
+     *
+     * @return HasMany<ReservaDetalle, $this>
+     */
+    public function repeticiones(): HasMany
+    {
+        return $this->hasMany(self::class, 'detalle_origen_id')->orderBy('ocurrencia');
     }
 
     /**

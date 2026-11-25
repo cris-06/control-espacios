@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import {
+    ChevronRight,
     CircleCheck,
     CircleX,
     Copy,
     Info,
+    Search,
     Trash2,
     TriangleAlert,
     Wrench,
 } from '@lucide/vue';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import CampoFormulario from '@/components/CampoFormulario.vue';
 import CampoSelect from '@/components/CampoSelect.vue';
 import InputError from '@/components/InputError.vue';
+import SelectorBuscable from '@/components/SelectorBuscable.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -27,9 +30,9 @@ import type {
 } from '@/types';
 
 /**
- * Un bloque de la solicitud: espacio, fecha, horario, docente responsable, alumnos
- * y requerimientos. El indicador de disponibilidad es solo informativo: el servidor
- * vuelve a comprobar todo al enviar y al autorizar.
+ * Un espacio de la solicitud (Formato 10): espacio, responsable, fecha, horario, alumnos y
+ * requerimientos. El indicador de disponibilidad es solo informativo: el servidor vuelve a
+ * comprobar todo al enviar y al autorizar.
  */
 const props = defineProps<{
     indice: number;
@@ -37,11 +40,14 @@ const props = defineProps<{
     docentes: DocenteOpcion[];
     licenciaturaId: string | null;
     reservaId: number | null;
-    // Números (1, 2, …) de otros bloques de esta solicitud con los que se traslapa.
+    // Números (1, 2, …) de otros espacios de esta solicitud con los que se traslapa.
     traslapaCon: number[];
-    // Primer día que se puede elegir (AAAA-MM-DD), o null si este bloque no debe cumplir
+    // Primer día que se puede elegir (AAAA-MM-DD), o null si este espacio no debe cumplir
     // la anticipación (fechas ya enviadas que no cambiaron).
     fechaMinima: string | null;
+    // Aviso de anticipación ya redactado (null si la fecha cumple).
+    avisoAnticipacion: string | null;
+    // Con un solo espacio no se ofrece eliminarlo desde aquí si no se quiere; se decide arriba.
     error: (campo: string) => string | undefined;
 }>();
 
@@ -50,17 +56,36 @@ const detalle = defineModel<DetalleEditable>('detalle', { required: true });
 defineEmits<{ duplicar: []; quitar: [] }>();
 
 const textarea =
-    'min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
+    'min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-base shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 md:text-sm';
 
-const opcionesEspacios = computed<Opcion[]>(() =>
-    props.espacios.map((e) => ({
-        id: e.id,
-        nombre:
-            e.nombre +
-            (e.capacidad ? ` · ${e.capacidad} lugares` : '') +
-            (e.estatus !== 'disponible' ? ' (en mantenimiento)' : ''),
-    })),
-);
+// Buscador: filtra la lista del selector (el espacio elegido siempre se conserva en la lista).
+const filtroEspacio = ref('');
+const normalizar = (s: string) =>
+    s
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .toLowerCase();
+
+const opcionesEspacios = computed<Opcion[]>(() => {
+    const buscado = normalizar(filtroEspacio.value.trim());
+
+    return props.espacios
+        .filter(
+            (e) =>
+                buscado === '' ||
+                String(e.id) === String(detalle.value.espacio_id) ||
+                normalizar(`${e.nombre} ${e.ubicacion ?? ''}`).includes(
+                    buscado,
+                ),
+        )
+        .map((e) => ({
+            id: e.id,
+            nombre:
+                e.nombre +
+                (e.capacidad ? ` · ${e.capacidad} lugares` : '') +
+                (e.estatus !== 'disponible' ? ' (en mantenimiento)' : ''),
+        }));
+});
 
 const espacio = computed(
     () =>
@@ -193,6 +218,26 @@ const errorAlumnos = computed(() => {
         : null;
 });
 
+// «Más datos de este espacio»: abierto si ya tiene alguno (para no esconder lo capturado).
+const masDatosAbierto = ref(
+    Boolean(
+        detalle.value.lugar_especifico ||
+        detalle.value.descripcion_actividad ||
+        detalle.value.observaciones,
+    ),
+);
+const errorMasDatos = computed(
+    () =>
+        props.error('lugar_especifico') ??
+        props.error('descripcion_actividad') ??
+        props.error('observaciones'),
+);
+watch(errorMasDatos, (e) => {
+    if (e) {
+        masDatosAbierto.value = true;
+    }
+});
+
 const { estado } = useDisponibilidadBloque(
     () => ({
         espacio_id: detalle.value.espacio_id,
@@ -211,111 +256,144 @@ const avisoChoque = (c: {
 </script>
 
 <template>
-    <div
-        class="grid gap-4 border-t border-border p-4 first:border-t-0 md:grid-cols-4 md:p-6"
+    <section
+        class="grid gap-5 rounded-xl border border-border bg-card p-4 shadow-xs md:grid-cols-2 md:p-6"
+        :aria-labelledby="`titulo-espacio-${indice}`"
     >
         <div
-            class="flex flex-wrap items-center justify-between gap-2 md:col-span-4"
+            class="flex flex-wrap items-center justify-between gap-2 md:col-span-2"
         >
-            <h3 class="text-sm font-semibold">Espacio {{ indice + 1 }}</h3>
-            <div class="flex gap-1">
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    title="Copiar este bloque para otra fecha"
-                    @click="$emit('duplicar')"
-                >
-                    <Copy class="size-4" />
-                    Duplicar
-                </Button>
-                <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    @click="$emit('quitar')"
-                >
-                    <Trash2 class="size-4" />
-                    Quitar
-                </Button>
-            </div>
+            <h3
+                :id="`titulo-espacio-${indice}`"
+                class="text-lg font-semibold text-rojo"
+            >
+                Espacio {{ indice + 1 }}
+            </h3>
+            <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Copiar este espacio para otra fecha"
+                @click="$emit('duplicar')"
+            >
+                <Copy class="size-4" />
+                Duplicar
+            </Button>
         </div>
 
         <CampoFormulario
             :id="`espacio-${indice}`"
             etiqueta="Espacio"
             :error="error('espacio_id')"
-            class="md:col-span-2"
         >
+            <div class="relative">
+                <Search
+                    class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden="true"
+                />
+                <Input
+                    :id="`buscar-espacio-${indice}`"
+                    v-model="filtroEspacio"
+                    type="search"
+                    class="pl-9"
+                    placeholder="Escribe para filtrar espacios…"
+                    :aria-label="`Filtrar espacios del espacio ${indice + 1}`"
+                />
+            </div>
             <CampoSelect
                 :id="`espacio-${indice}`"
                 v-model="detalle.espacio_id"
                 :opciones="opcionesEspacios"
-                vacio="Selecciona un espacio"
+                vacio="Seleccione"
             />
         </CampoFormulario>
         <CampoFormulario
             :id="`docente-${indice}`"
-            etiqueta="Docente responsable (opcional)"
+            etiqueta="Responsable del espacio"
             :error="error('docente_responsable_id')"
-            class="md:col-span-2"
         >
-            <CampoSelect
+            <SelectorBuscable
                 :id="`docente-${indice}`"
                 v-model="detalle.docente_responsable_id"
                 :opciones="opcionesDocentes"
-                :vacio="
-                    licenciaturaId
-                        ? 'Sin responsable asignado'
-                        : 'Primero elige la licenciatura'
-                "
+                placeholder="Escribe o selecciona al responsable"
+                sin-opciones="Primero elige la licenciatura"
             />
+            <p class="text-xs text-muted-foreground">
+                Persona responsable durante el uso de este espacio (opcional).
+            </p>
         </CampoFormulario>
+
         <CampoFormulario
             :id="`fecha-${indice}`"
             etiqueta="Fecha"
             :error="error('fecha')"
-            class="md:col-span-2"
         >
             <!-- Los días antes de la anticipación mínima quedan bloqueados en el selector. -->
             <Input
                 :id="`fecha-${indice}`"
                 v-model="detalle.fecha"
                 type="date"
+                class="h-10"
                 :min="fechaMinima ?? undefined"
                 required
             />
             <p v-if="fechaMinima" class="text-xs text-muted-foreground">
                 Disponible a partir del {{ formatearFecha(fechaMinima) }}.
             </p>
+            <p
+                v-if="avisoAnticipacion"
+                class="flex items-start gap-1.5 text-xs text-amber-700"
+            >
+                <TriangleAlert class="mt-px size-3.5 shrink-0" />
+                {{ avisoAnticipacion }}
+            </p>
         </CampoFormulario>
         <CampoFormulario
             :id="`inicio-${indice}`"
-            etiqueta="Hora de inicio"
+            etiqueta="Hora inicio"
             :error="error('hora_inicio')"
         >
             <Input
                 :id="`inicio-${indice}`"
                 v-model="detalle.hora_inicio"
                 type="time"
+                class="h-10"
                 required
             />
         </CampoFormulario>
         <CampoFormulario
             :id="`fin-${indice}`"
-            etiqueta="Hora de fin"
+            etiqueta="Hora fin"
             :error="error('hora_fin')"
         >
             <Input
                 :id="`fin-${indice}`"
                 v-model="detalle.hora_fin"
                 type="time"
+                class="h-10"
                 required
             />
         </CampoFormulario>
+        <CampoFormulario
+            :id="`alumnos-${indice}`"
+            etiqueta="Cantidad de alumnos en este espacio *"
+            :error="error('cantidad_alumnos') ?? errorAlumnos ?? undefined"
+        >
+            <Input
+                :id="`alumnos-${indice}`"
+                v-model.number="detalle.cantidad_alumnos"
+                type="number"
+                min="1"
+                class="h-10"
+            />
+            <p v-if="ayudaAlumnos" class="text-xs text-muted-foreground">
+                {{ ayudaAlumnos }}
+            </p>
+        </CampoFormulario>
 
         <!-- Disponibilidad en vivo (informativa) -->
-        <div class="md:col-span-4" aria-live="polite">
+        <div class="md:col-span-2" aria-live="polite">
             <p
                 v-if="traslapaCon.length"
                 class="mb-2 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
@@ -412,115 +490,165 @@ const avisoChoque = (c: {
             </template>
         </div>
 
-        <CampoFormulario
-            :id="`alumnos-${indice}`"
-            etiqueta="Cantidad de alumnos *"
-            :error="error('cantidad_alumnos') ?? errorAlumnos ?? undefined"
-            class="md:col-span-2"
-        >
-            <Input
-                :id="`alumnos-${indice}`"
-                v-model.number="detalle.cantidad_alumnos"
-                type="number"
-                min="1"
-            />
-            <p v-if="ayudaAlumnos" class="text-xs text-muted-foreground">
-                {{ ayudaAlumnos }}
-            </p>
-        </CampoFormulario>
-        <CampoFormulario
-            :id="`lugar-${indice}`"
-            etiqueta="Lugar específico (opcional)"
-            :error="error('lugar_especifico')"
-            class="md:col-span-2"
-        >
-            <Input
-                :id="`lugar-${indice}`"
-                v-model="detalle.lugar_especifico"
-                maxlength="150"
-            />
-        </CampoFormulario>
-
         <!-- Requerimientos del espacio -->
-        <div class="grid gap-2 md:col-span-4">
-            <Label>Requerimientos (opcional)</Label>
-            <p v-if="!espacio" class="text-sm text-muted-foreground">
-                Elige un espacio para ver sus requerimientos.
-            </p>
-            <p
-                v-else-if="espacio.requerimientos.length === 0"
-                class="text-sm text-muted-foreground"
-            >
-                Este espacio no tiene requerimientos registrados.
-            </p>
-            <ul v-else class="grid gap-2 sm:grid-cols-2">
-                <li
-                    v-for="requerimiento in espacio.requerimientos"
-                    :key="requerimiento.id"
-                    class="grid gap-1 rounded-md border border-border px-3 py-2"
+        <div
+            class="grid gap-4 rounded-xl border border-border bg-muted/40 p-4 md:col-span-2 md:p-5"
+        >
+            <div class="grid gap-2">
+                <Label class="font-semibold"
+                    >Requerimientos disponibles del espacio</Label
                 >
-                    <div class="flex items-center gap-3">
-                        <Checkbox
-                            :id="`req-${indice}-${requerimiento.id}`"
-                            :model-value="!!pedido(requerimiento.id)"
-                            @update:model-value="
-                                (v) =>
-                                    alternarRequerimiento(requerimiento.id, v)
+                <div class="rounded-lg border border-border bg-background p-3">
+                    <p
+                        v-if="!espacio"
+                        class="inline-block rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground"
+                    >
+                        Selecciona un espacio para ver sus requerimientos.
+                    </p>
+                    <p
+                        v-else-if="espacio.requerimientos.length === 0"
+                        class="inline-block rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground"
+                    >
+                        Este espacio no tiene requerimientos registrados.
+                    </p>
+                    <ul v-else class="grid gap-2 sm:grid-cols-2">
+                        <li
+                            v-for="requerimiento in espacio.requerimientos"
+                            :key="requerimiento.id"
+                            class="grid gap-1 rounded-md border px-3 py-2 transition-colors"
+                            :class="
+                                pedido(requerimiento.id)
+                                    ? 'border-rojo/40 bg-secondary/60'
+                                    : 'border-border'
                             "
-                        />
-                        <Label
-                            :for="`req-${indice}-${requerimiento.id}`"
-                            class="flex-1 font-normal"
                         >
-                            {{ requerimiento.nombre }}
-                            <span class="text-xs text-muted-foreground">
-                                (hay {{ requerimiento.cantidad_disponible }})
-                            </span>
-                        </Label>
-                        <Input
-                            v-if="pedido(requerimiento.id)"
-                            :aria-label="`Cantidad de ${requerimiento.nombre}`"
-                            :model-value="pedido(requerimiento.id)?.cantidad"
-                            type="number"
-                            min="1"
-                            :max="requerimiento.cantidad_disponible"
-                            class="h-8 w-20"
-                            @update:model-value="
-                                (v) => cambiarCantidad(requerimiento.id, v)
-                            "
-                        />
-                    </div>
-                    <InputError
-                        :message="errorRequerimiento(requerimiento.id)"
-                    />
-                </li>
-            </ul>
-            <InputError :message="error('requerimientos')" />
+                            <div class="flex flex-wrap items-center gap-3">
+                                <Checkbox
+                                    :id="`req-${indice}-${requerimiento.id}`"
+                                    :model-value="!!pedido(requerimiento.id)"
+                                    @update:model-value="
+                                        (v) =>
+                                            alternarRequerimiento(
+                                                requerimiento.id,
+                                                v,
+                                            )
+                                    "
+                                />
+                                <Label
+                                    :for="`req-${indice}-${requerimiento.id}`"
+                                    class="min-w-0 flex-1 font-normal"
+                                >
+                                    {{ requerimiento.nombre }}
+                                    <span class="text-xs text-muted-foreground">
+                                        (hasta
+                                        {{ requerimiento.cantidad_disponible }})
+                                    </span>
+                                </Label>
+                                <Input
+                                    v-if="pedido(requerimiento.id)"
+                                    :aria-label="`Cantidad de ${requerimiento.nombre}`"
+                                    :model-value="
+                                        pedido(requerimiento.id)?.cantidad
+                                    "
+                                    type="number"
+                                    min="1"
+                                    :max="requerimiento.cantidad_disponible"
+                                    class="h-8 w-20"
+                                    @update:model-value="
+                                        (v) =>
+                                            cambiarCantidad(requerimiento.id, v)
+                                    "
+                                />
+                            </div>
+                            <InputError
+                                :message="errorRequerimiento(requerimiento.id)"
+                            />
+                        </li>
+                    </ul>
+                </div>
+                <InputError :message="error('requerimientos')" />
+            </div>
+
+            <CampoFormulario
+                :id="`material-${indice}`"
+                etiqueta="Requerimientos adicionales"
+                :error="error('material_requerido')"
+            >
+                <textarea
+                    :id="`material-${indice}`"
+                    v-model="detalle.material_requerido"
+                    :class="textarea"
+                    maxlength="5000"
+                    placeholder="Escribe aquí algún requerimiento adicional, por ejemplo: extensión eléctrica, mesa de registro, decoración especial…"
+                />
+            </CampoFormulario>
         </div>
 
-        <CampoFormulario
-            :id="`descripcion-${indice}`"
-            etiqueta="Descripción de la actividad (opcional)"
-            :error="error('descripcion_actividad')"
-            class="md:col-span-2"
-        >
-            <textarea
-                :id="`descripcion-${indice}`"
-                v-model="detalle.descripcion_actividad"
-                :class="textarea"
-            />
-        </CampoFormulario>
-        <CampoFormulario
-            :id="`material-${indice}`"
-            etiqueta="Material requerido (opcional)"
-            :error="error('material_requerido')"
-            class="md:col-span-2"
-        >
-            <textarea
-                :id="`material-${indice}`"
-                v-model="detalle.material_requerido"
-                :class="textarea"
-            />
-        </CampoFormulario>
-    </div>
+        <!-- Datos que ya existían por espacio: se conservan, plegados para no recargar el formato. -->
+        <div class="md:col-span-2">
+            <button
+                type="button"
+                class="flex items-center gap-1.5 text-sm font-medium text-rojo hover:underline"
+                :aria-expanded="masDatosAbierto"
+                :aria-controls="`mas-datos-${indice}`"
+                @click="masDatosAbierto = !masDatosAbierto"
+            >
+                <ChevronRight
+                    class="size-4 transition-transform"
+                    :class="{ 'rotate-90': masDatosAbierto }"
+                />
+                Más datos de este espacio (opcional)
+            </button>
+            <div
+                v-show="masDatosAbierto"
+                :id="`mas-datos-${indice}`"
+                class="mt-3 grid gap-4 md:grid-cols-2"
+            >
+                <CampoFormulario
+                    :id="`lugar-${indice}`"
+                    etiqueta="Lugar específico"
+                    :error="error('lugar_especifico')"
+                >
+                    <Input
+                        :id="`lugar-${indice}`"
+                        v-model="detalle.lugar_especifico"
+                        maxlength="150"
+                        placeholder="Por ejemplo: escenario, mesa 3, zona norte"
+                    />
+                </CampoFormulario>
+                <div class="hidden md:block" />
+                <CampoFormulario
+                    :id="`descripcion-${indice}`"
+                    etiqueta="Actividad en este espacio"
+                    :error="error('descripcion_actividad')"
+                >
+                    <textarea
+                        :id="`descripcion-${indice}`"
+                        v-model="detalle.descripcion_actividad"
+                        :class="textarea"
+                        maxlength="5000"
+                    />
+                </CampoFormulario>
+                <CampoFormulario
+                    :id="`observaciones-${indice}`"
+                    etiqueta="Observaciones de este espacio"
+                    :error="error('observaciones')"
+                >
+                    <textarea
+                        :id="`observaciones-${indice}`"
+                        v-model="detalle.observaciones"
+                        :class="textarea"
+                        maxlength="5000"
+                    />
+                </CampoFormulario>
+            </div>
+        </div>
+
+        <div class="md:col-span-2">
+            <Button type="button" @click="$emit('quitar')">
+                <Trash2 class="size-4" />
+                Eliminar espacio
+            </Button>
+        </div>
+    </section>
 </template>

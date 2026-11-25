@@ -6,6 +6,7 @@ use App\Models\EstadoReserva;
 use App\Models\Reserva;
 use App\Models\ReservaDetalle;
 use App\Models\ReservaDetalleRequerimiento;
+use App\Models\ReservaLicenciatura;
 use App\Services\AnticipacionReserva;
 use App\Support\CasillasAutorizacion;
 use Carbon\CarbonInterface;
@@ -35,6 +36,7 @@ class ImprimirReservaController extends Controller
             'creador.rol:id,nombre',
             'coordinador:id,nombre,apellido_paterno,apellido_materno,rol_id',
             'coordinador.rol:id,nombre',
+            'docenteResponsable:id,nombre,apellido_paterno,apellido_materno',
             'licenciatura:id,nombre',
             'actividad:id,nombre',
             'detalles.espacio:id,nombre',
@@ -63,7 +65,20 @@ class ImprimirReservaController extends Controller
             'licenciatura' => $reserva->licenciatura->nombre,
             'cuatrimestre' => implode(', ', $reserva->periodoCuatrimestral()) ?: null,
             'asignatura' => implode(', ', $reserva->asignaturas ?? []) ?: null,
-            'alumnos' => $this->alumnos($bloques),
+            'alumnos' => $this->alumnos($bloques, $reserva->cantidad_total_alumnos),
+            // Formato 10 (por solicitud): folio capturado por la coordinación, responsables y
+            // textos generales. Los textos de cada espacio se siguen mostrando debajo.
+            'licenciaturasAdicionales' => $reserva->licenciaturasAdicionales()->with('licenciatura:id,nombre')->get()
+                ->map(fn (ReservaLicenciatura $l): array => [
+                    'nombre' => $l->licenciatura->nombre,
+                    'invitada' => $l->tipo === ReservaLicenciatura::INVITADA,
+                    'grupos' => implode(', ', Reserva::periodoDe($l->cuatrimestres)) ?: null,
+                ])->values()->all(),
+            'repeticion' => $this->repeticion($reserva),
+            'docenteResponsable' => $reserva->docenteResponsable?->name,
+            'coordinadorResponsable' => $reserva->coordinador?->name,
+            'descripcionGeneral' => $this->texto($reserva->descripcion_actividad),
+            'observacionesGenerales' => $this->texto($reserva->observaciones),
             'fechas' => array_values(array_unique(array_map(fn (array $b): string => $b['fecha_corta'], $bloques))),
             'horario' => $this->horarioComun($bloques),
             'bloques' => $bloques,
@@ -103,11 +118,20 @@ class ImprimirReservaController extends Controller
      * personas (un grupo puede asistir a varios bloques), así que se presenta como suma por
      * bloque y nunca como total de personas distintas.
      *
+     * Si la solicitud tiene la cantidad total capturada (alumnos distintos), se usa esa.
+     *
      * @param  list<array{alumnos: int|null}>  $bloques
      * @return array{texto: string, nota: string|null}
      */
-    private function alumnos(array $bloques): array
+    private function alumnos(array $bloques, ?int $total = null): array
     {
+        if ($total !== null) {
+            return [
+                'texto' => $total.' '.($total === 1 ? 'alumno' : 'alumnos'),
+                'nota' => count($bloques) > 1 ? 'Total de alumnos de la actividad; la cantidad de cada espacio se detalla en «Lugar».' : null,
+            ];
+        }
+
         $registrados = array_values(array_filter(array_map(fn (array $b): ?int => $b['alumnos'], $bloques), fn (?int $n): bool => $n !== null));
 
         if ($registrados === []) {
@@ -203,6 +227,34 @@ class ImprimirReservaController extends Controller
             'situacion' => $casilla['situacion'],
             'detalle' => $casilla['etiqueta'].($casilla['fecha'] === null ? '' : ' el '.$this->fechaHora($casilla['fecha'])),
         ];
+    }
+
+    /**
+     * «Se repite cada semana: 5 fechas por espacio (1 original y 4 repeticiones), hasta el …».
+     * null si la reserva no se repite. Las fechas en sí ya aparecen en «Fecha» y «Lugar».
+     */
+    private function repeticion(Reserva $reserva): ?string
+    {
+        if ($reserva->repeticion_frecuencia === null) {
+            return null;
+        }
+
+        $frecuencia = match ($reserva->repeticion_frecuencia) {
+            'diaria' => 'cada día',
+            'semanal' => 'cada semana',
+            'mensual' => 'cada mes',
+            default => 'cada año',
+        };
+
+        $texto = "Se repite {$frecuencia}";
+
+        if ($reserva->repeticion_hasta !== null) {
+            return $texto.' hasta el '.$reserva->repeticion_hasta->format('d-m-Y').'.';
+        }
+
+        $n = (int) $reserva->repeticion_cantidad;
+
+        return $texto.": la fecha original y {$n} ".($n === 1 ? 'repetición' : 'repeticiones').'.';
     }
 
     private function texto(?string $valor): ?string
